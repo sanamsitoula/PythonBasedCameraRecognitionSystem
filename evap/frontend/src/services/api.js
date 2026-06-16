@@ -62,11 +62,13 @@ export const camerasAPI = {
 
 export const employeesAPI = {
   ...makeCRUD('employees'),
-  enrollFace: (id, formData) =>
-    api.post(`/employees/${id}/face-enroll`, formData, {
+  uploadPhotos: (id, formData) =>
+    api.post(`/employees/${id}/photos`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
-  removeFace: (id) => api.delete(`/employees/${id}/face`),
+  deletePhoto: (id, filename) => api.delete(`/employees/${id}/photos/${filename}`),
+  triggerEnrollment: (id) => api.post(`/employees/${id}/enroll`),
+  getEnrollmentStatus: (id) => api.get(`/employees/${id}/enrollment-status`),
   exportCSV: (params) =>
     api.get('/employees/export/csv', { params, responseType: 'blob' }),
 };

@@ -2,7 +2,7 @@
 """
 enrollment_cli.py – Command-line tool for enrolling employees into Phase 3.
 
-Usage:
+Sub-command usage:
   python enrollment_cli.py add --id EMP001 --name "Ram Sharma" --dept "Finance" --dir photos/ram/
   python enrollment_cli.py add --id EMP002 --name "Sita KC" --dept "HR" --images img1.jpg img2.jpg
   python enrollment_cli.py update --id EMP001 --dept "Administration"
@@ -11,6 +11,10 @@ Usage:
   python enrollment_cli.py delete --id EMP001
   python enrollment_cli.py list
   python enrollment_cli.py status --id EMP001
+
+Direct (API) usage — no subcommand needed:
+  python enrollment_cli.py --id EMP001 --name "Ram Sharma" --dept "Finance" --images img1.jpg img2.jpg
+  python enrollment_cli.py --id EMP001 --name "Ram Sharma" --dept "Finance" --dir photos/ram/ --json
 """
 
 import argparse
@@ -295,7 +299,18 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="enrollment_cli.py",
         description="CCTV Phase 3 – Employee Face Enrollment CLI",
     )
-    sub = parser.add_subparsers(dest="command", required=True)
+    # Top-level (direct / API mode) args — used when no subcommand is given
+    parser.add_argument("--id",          default=None, help="Employee ID (direct mode)")
+    parser.add_argument("--name",        default=None, help="Full name (direct mode)")
+    parser.add_argument("--dept",        default=None, help="Department (direct mode)")
+    parser.add_argument("--designation", default=None, help="Job title (direct mode)")
+    parser.add_argument("--dir",         default=None, help="Image directory (direct mode)")
+    parser.add_argument("--images",      nargs="+",    default=None, metavar="IMAGE",
+                        help="Image file paths (direct mode)")
+    parser.add_argument("--json",        action="store_true",
+                        help="Output result as JSON (for API callers)")
+
+    sub = parser.add_subparsers(dest="command")  # not required — enables direct mode
 
     # ── add ──────────────────────────────────────────────────────────────────
     p_add = sub.add_parser("add", help="Enroll a new employee")
@@ -351,19 +366,68 @@ def _add_image_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _json_result(result, use_json: bool) -> None:
+    """Print result as JSON when --json flag is set; also print plain text."""
+    if use_json:
+        import json
+        data = {
+            "success": result.success,
+            "message": result.message,
+            "embedding_count": getattr(result, "embedding_count", 0) or 0,
+        }
+        print(json.dumps(data))
+    else:
+        _print_result(result)
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 def main() -> int:
-    parser  = _build_parser()
-    args    = parser.parse_args()
+    parser = _build_parser()
+    args   = parser.parse_args()
 
-    console.print(
-        Panel(
-            "[bold cyan]CCTV Phase 3 – Enrollment CLI[/bold cyan]",
-            expand=False,
+    use_json = getattr(args, "json", False)
+
+    # Direct / API mode: no subcommand but --id and --name provided
+    if not args.command:
+        if args.id and args.name:
+            # Treat as "add"
+            if not use_json:
+                console.print(
+                    Panel(
+                        "[bold cyan]CCTV Phase 3 – Enrollment CLI (direct mode)[/bold cyan]",
+                        expand=False,
+                    )
+                )
+            _face_engine, _db_manager, _db_p3, enrollment = _bootstrap()
+            try:
+                result = _direct_enroll(args, enrollment)
+                _json_result(result, use_json)
+                if not use_json and result.success:
+                    print(
+                        f"Enrolled {getattr(result, 'embedding_count', 0) or 0} "
+                        f"embeddings for {args.name} ({args.id})"
+                    )
+                return 0 if result.success else 1
+            except Exception as exc:
+                if use_json:
+                    import json
+                    print(json.dumps({"success": False, "message": str(exc), "embedding_count": 0}))
+                else:
+                    console.print(f"[bold red]Unexpected error:[/bold red] {exc}")
+                return 1
+        else:
+            parser.print_help()
+            return 1
+
+    if not use_json:
+        console.print(
+            Panel(
+                "[bold cyan]CCTV Phase 3 – Enrollment CLI[/bold cyan]",
+                expand=False,
+            )
         )
-    )
 
     _face_engine, _db_manager, db_p3, enrollment = _bootstrap()
 
@@ -390,6 +454,28 @@ def main() -> int:
     except Exception as exc:
         console.print(f"[bold red]Unexpected error:[/bold red] {exc}")
         return 1
+
+
+def _direct_enroll(args, enrollment):
+    """Run enrollment from direct-mode args (no subcommand)."""
+    if args.dir:
+        return enrollment.enroll_from_directory(
+            employee_id=args.id,
+            name=args.name,
+            department=args.dept or "General",
+            designation=args.designation or "",
+            image_dir=args.dir,
+        )
+    elif args.images:
+        return enrollment.add_employee(
+            employee_id=args.id,
+            name=args.name,
+            department=args.dept or "General",
+            designation=args.designation or "",
+            image_paths=args.images,
+        )
+    else:
+        raise ValueError("Provide --dir or --images for enrollment")
 
 
 if __name__ == "__main__":

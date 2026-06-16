@@ -91,7 +91,7 @@ INSERT INTO users (username, email, hashed_password, role, full_name)
 VALUES (
     'admin',
     'admin@evap.local',
-    '$2b$12$Jv1bjlZO7n6juAnhv1/dv.W5kLiDBbNWLIy16eKhmZul7hNDtrNFG',  -- bcrypt of 'admin123'
+    '$2b$12$DAWT7tsc.h3tSImBbSlYeeqPX8hJpkNLbS99dsaitTyIbQx.LExHO',  -- bcrypt of 'admin123'
     'admin',
     'System Administrator'
 ) ON CONFLICT (username) DO NOTHING;

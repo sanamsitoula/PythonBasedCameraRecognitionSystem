@@ -8,6 +8,7 @@ const LoginPage = lazy(() => import('./pages/Login'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const CamerasPage = lazy(() => import('./pages/Cameras'));
 const EmployeesPage = lazy(() => import('./pages/Employees'));
+const EmployeeDetailPage = lazy(() => import('./pages/EmployeeDetail'));
 const VisitorsPage = lazy(() => import('./pages/Visitors'));
 const VehiclesPage = lazy(() => import('./pages/Vehicles'));
 const AttendancePage = lazy(() => import('./pages/Attendance'));
@@ -45,6 +46,7 @@ export default function App() {
             <Route index element={<Dashboard />} />
             <Route path="cameras" element={<CamerasPage />} />
             <Route path="employees" element={<EmployeesPage />} />
+            <Route path="employees/:employee_id" element={<EmployeeDetailPage />} />
             <Route path="visitors" element={<VisitorsPage />} />
             <Route path="vehicles" element={<VehiclesPage />} />
             <Route path="attendance" element={<AttendancePage />} />

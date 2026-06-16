@@ -11,6 +11,7 @@ from sqlalchemy import (
     BigInteger, Boolean, CheckConstraint, DateTime,
     ForeignKey, Integer, Numeric, String, Text, Time,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
@@ -44,10 +45,24 @@ class EmployeeMaster(Base):
     email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Enrollment tracking columns (added by sql/006_employee_enrollment_fields.sql)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    enrollment_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="not_started"
+    )
+    enrollment_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    photo_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    photo_paths: Mapped[object] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="'[]'::jsonb"
+    )
 
     __table_args__ = (
         CheckConstraint(
             "status IN ('active','inactive','deleted')", name="ck_em_status"
+        ),
+        CheckConstraint(
+            "enrollment_status IN ('not_started','pending','enrolled','failed')",
+            name="ck_em_enrollment_status",
         ),
     )
 
