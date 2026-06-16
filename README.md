@@ -199,7 +199,7 @@ The installer sets a password for the `postgres` superuser — remember it.
 Open pgAdmin or run these in psql as the `postgres` superuser:
 
 ```sql
-CREATE ROLE cctv_user LOGIN PASSWORD 'Nepal@123';
+CREATE ROLE cctv_user LOGIN PASSWORD 'YOUR_DB_PASSWORD';
 CREATE DATABASE cctv_analytics OWNER cctv_user;
 
 \c cctv_analytics
@@ -215,16 +215,16 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO cctv_user;
 Or using the command line:
 ```powershell
 $env:PGPASSWORD = "your_postgres_password"
-& "C:\Program Files\PostgreSQL\15\bin\psql.exe" -h localhost -U postgres -c "CREATE ROLE cctv_user LOGIN PASSWORD 'Nepal@123';"
+& "C:\Program Files\PostgreSQL\15\bin\psql.exe" -h localhost -U postgres -c "CREATE ROLE cctv_user LOGIN PASSWORD 'YOUR_DB_PASSWORD';"
 & "C:\Program Files\PostgreSQL\15\bin\psql.exe" -h localhost -U postgres -c "CREATE DATABASE cctv_analytics OWNER cctv_user;"
 ```
 
 ### Step 2 — Run schema migrations
 
-Run Phase 2 tables first, then Phase 3 tables:
+Run all three migration files in order:
 
 ```powershell
-$env:PGPASSWORD = "Nepal@123"
+$env:PGPASSWORD = "YOUR_DB_PASSWORD"
 $psql = "C:\Program Files\PostgreSQL\15\bin\psql.exe"
 
 # Phase 2 — 11 tables
@@ -232,11 +232,14 @@ $psql = "C:\Program Files\PostgreSQL\15\bin\psql.exe"
 
 # Phase 3 — 14 additional tables
 & $psql -h localhost -U cctv_user -d cctv_analytics -f sql\schema_p3.sql
+
+# EVAP web platform — extends existing tables + adds 29 new tables
+& $psql -h localhost -U cctv_user -d cctv_analytics -f sql\005_evap_web_tables.sql
 ```
 
-Both scripts use `CREATE TABLE IF NOT EXISTS` — safe to re-run, will never delete data.
+All scripts use `CREATE TABLE IF NOT EXISTS` / `ALTER TABLE … ADD COLUMN IF NOT EXISTS` — safe to re-run, will never delete data.
 
-### Step 3 — Verify (25 tables total)
+### Step 3 — Verify (54 tables total)
 
 ```powershell
 & $psql -h localhost -U cctv_user -d cctv_analytics -c "\dt"
@@ -244,22 +247,37 @@ Both scripts use `CREATE TABLE IF NOT EXISTS` — safe to re-run, will never del
 
 Expected tables:
 
-| Phase 2 (11) | Phase 3 (14) |
-|---|---|
-| cameras | employee_master |
-| sessions | employee_face_master |
-| tracked_objects | face_embeddings |
-| gender_classifications | recognized_persons |
-| direction_events | visitor_master |
-| line_crossings | visitor_tracking |
-| zone_events | attendance_log |
-| occupancy_snapshots | employee_zone_history |
-| vehicle_counts | canteen_visits |
-| error_events | movement_history |
-| system_health_snapshots | department_analytics |
-| | cross_camera_tracking |
-| | smart_alerts |
-| | audit_log |
+| Phase 2 (11) | Phase 3 (14) | EVAP Web (29) |
+|---|---|---|
+| cameras | employee_master | roles |
+| sessions | employee_face_master | users |
+| tracked_objects | face_embeddings | api_keys |
+| gender_classifications | recognized_persons | site_master |
+| direction_events | visitor_master | building_master |
+| line_crossings | visitor_tracking | floor_master |
+| zone_events | attendance_log | zone_master |
+| occupancy_snapshots | employee_zone_history | camera_master |
+| vehicle_counts | canteen_visits | camera_streams |
+| error_events | movement_history | face_master |
+| system_health_snapshots | department_analytics | alert_log |
+| | cross_camera_tracking | notification_log |
+| | smart_alerts | watchlist |
+| | audit_log | occupancy_log |
+| | | zone_history |
+| | | analytics_daily |
+| | | analytics_monthly |
+| | | behavior_events |
+| | | system_health |
+| | | api_log |
+| | | evap_audit_log |
+| | | erp_sync_log |
+| | | reports |
+| | | vehicle_master |
+| | | license_plate_log |
+| | | detections |
+| | | heatmap_data |
+| | | notification_settings |
+| | | erp_config |
 
 ### DB credentials (current setup)
 
@@ -269,7 +287,28 @@ Expected tables:
 | Port | 5432 |
 | Database | cctv_analytics |
 | User | cctv_user |
-| Password | Nepal@123 |
+| Password | *(set in `evap/backend/.env` — not committed to git)* |
+
+> Real credentials live in `evap/backend/.env` (gitignored). Copy `evap/backend/.env.example` and fill in your values.
+
+### Unified database architecture
+
+All three layers — CCTV engine, FastAPI backend, and React frontend — share one database: **`cctv_analytics`**.
+
+```
+cctv_analytics (PostgreSQL 15)
+├── Phase 2 tables (schema.sql)          — cameras, sessions, tracking, occupancy …
+├── Phase 3 tables (schema_p3.sql)       — employees, visitors, attendance, alerts …
+└── EVAP tables (005_evap_web_tables.sql)
+    ├── Extended columns on Phase 3 tables (email, phone, is_active …)
+    └── New EVAP-only tables             — users, roles, site/floor/zone/camera hierarchy,
+                                           alert_log, analytics, vehicle_master …
+```
+
+There is **no separate EVAP database**. The `evap/backend/.env` file points to `cctv_analytics`:
+```
+DATABASE_URL=postgresql+asyncpg://cctv_user:YOUR_PASSWORD_URL_ENCODED@localhost:5432/cctv_analytics
+```
 
 ---
 
@@ -300,7 +339,7 @@ host     = localhost
 port     = 5432
 dbname   = cctv_analytics
 user     = cctv_user
-password = Nepal@123
+password = YOUR_DB_PASSWORD
 ```
 
 ### Virtual counting line
@@ -484,7 +523,7 @@ pytest tests/unit/ -v
 
 Integration tests (requires PostgreSQL running with `cctv_analytics` DB):
 ```powershell
-$env:CCTV_TEST_PASSWORD = "Nepal@123"
+$env:CCTV_TEST_PASSWORD = "YOUR_DB_PASSWORD"
 pytest tests/integration/ -v
 ```
 
@@ -791,7 +830,7 @@ This section maps every panel in `phase3_dashboard.py` (the terminal CLI dashboa
 | **UI page** | `evap/frontend/src/pages/Cameras.jsx` | `load()`, `handleSave()`, `handleDelete()`, `handleRestart()` — full CRUD | ✅ |
 | **API endpoint** | `GET /api/v1/cameras` | Camera list | ✅ |
 | **API endpoint** | `GET /api/v1/dashboard/cameras-status` | Live camera health per camera | ✅ |
-| **DB table** | `evap` DB → `cameras` table (evap SQLAlchemy model) | Camera master in EVAP DB | ✅ |
+| **DB table** | `cctv_analytics.camera_master` | EVAP structured camera registry (added by 005_evap_web_tables.sql) | ✅ |
 | **DB table** | `cctv_analytics.cameras` | Camera record written by phase3_main.py | ✅ |
 
 ---
@@ -843,25 +882,27 @@ phase3_dashboard.py (CLI)          ▼
 
 The web UI requires three services running simultaneously: **PostgreSQL** (already set up), **FastAPI backend**, and **React frontend**.
 
-### Step 1 — Create the EVAP web database (run once)
+### Step 1 — Run the EVAP migration against cctv_analytics (run once)
 
-Open PowerShell and run as **postgres superuser**:
+The EVAP web platform uses the **same** `cctv_analytics` database as the CCTV engine.
+`sql/005_evap_web_tables.sql` extends existing Phase 3 tables and adds 29 new EVAP-specific tables.
 
 ```powershell
-$env:PGPASSWORD = "Nepal@123"
+$env:PGPASSWORD = "YOUR_DB_PASSWORD"
 $psql = "C:\Program Files\PostgreSQL\15\bin\psql.exe"
 
-# Create user and database for the web API
-& $psql -h localhost -U postgres -c "CREATE ROLE evap LOGIN PASSWORD 'Nepal@123';"
-& $psql -h localhost -U postgres -c "CREATE DATABASE evap OWNER evap;"
-& $psql -h localhost -U postgres -d evap -c "CREATE EXTENSION IF NOT EXISTS uuid-ossp; CREATE EXTENSION IF NOT EXISTS pgcrypto;"
-& $psql -h localhost -U postgres -d evap -c "GRANT USAGE ON SCHEMA public TO evap; ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO evap; ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO evap;"
-
-# Run EVAP schema migrations
-& $psql -h localhost -U evap -d evap -f "evap\sql\001_schema.sql"
-& $psql -h localhost -U evap -d evap -f "evap\sql\002_indexes.sql"
-& $psql -h localhost -U evap -d evap -f "evap\sql\003_seed_data.sql"
+# Extend cctv_analytics with EVAP tables (idempotent — safe to re-run)
+& $psql -h localhost -U cctv_user -d cctv_analytics -f sql\005_evap_web_tables.sql
 ```
+
+This script:
+- Adds EVAP extension columns to `employee_master`, `visitor_master`, `attendance_log`, etc.
+- Creates 29 new tables (auth, site hierarchy, camera registry, alerts, analytics, …)
+- Seeds the default `admin` role and `admin` user (password: `admin123` — **change it after first login**)
+- Creates all necessary indexes
+
+> **Note:** If you already ran the full schema from Section 5 Step 2 (which includes `005_evap_web_tables.sql`),
+> you can skip this step.
 
 ### Step 2 — Start the FastAPI backend
 

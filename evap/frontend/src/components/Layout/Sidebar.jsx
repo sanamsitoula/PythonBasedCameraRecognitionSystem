@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import {
-  RiDashboardLine, RiVideoLine, RiGroupLine, RiUserCheckLine,
+  RiDashboardLine, RiVideoLine, RiGroupLine, RiUserFollowLine,
   RiCarLine, RiCalendarCheckLine, RiBellLine, RiMapLine,
   RiBarChartLine, RiFileTextLine, RiSettings3Line, RiLogoutBoxLine,
   RiShieldCheckLine, RiMenuFoldLine, RiMenuUnfoldLine,
@@ -12,7 +12,7 @@ const NAV_ITEMS = [
   { to: '/', icon: RiDashboardLine, label: 'Dashboard', exact: true },
   { to: '/cameras', icon: RiVideoLine, label: 'Cameras' },
   { to: '/employees', icon: RiGroupLine, label: 'Employees' },
-  { to: '/visitors', icon: RiUserCheckLine, label: 'Visitors' },
+  { to: '/visitors', icon: RiUserFollowLine, label: 'Visitors' },
   { to: '/vehicles', icon: RiCarLine, label: 'Vehicles' },
   { to: '/attendance', icon: RiCalendarCheckLine, label: 'Attendance' },
   { to: '/alerts', icon: RiBellLine, label: 'Alerts', badge: true },

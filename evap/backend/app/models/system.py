@@ -107,8 +107,10 @@ class ApiLog(Base):
 
 
 class AuditLog(Base):
-    """Reflects Phase 3 audit_log table."""
-    __tablename__ = "audit_log"
+    """EVAP web-platform audit log. Stored as evap_audit_log to avoid
+    conflict with cctv_analytics.audit_log (which the CCTV engine writes to).
+    """
+    __tablename__ = "evap_audit_log"
 
     audit_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[Optional[int]] = mapped_column(
