@@ -14,11 +14,9 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
-    Numeric,
     String,
     Text,
 )
-from sqlalchemy.dialects.postgresql import INET
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
@@ -63,29 +61,20 @@ class CameraMaster(Base):
     last_heartbeat: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    ip_address: Mapped[Optional[str]] = mapped_column(INET, nullable=True)
+    ip_address: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
     manufacturer: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     model: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     installed_at: Mapped[Optional[datetime]] = mapped_column(Date, nullable=True)
-    location_x: Mapped[Optional[float]] = mapped_column(Numeric(10, 4), nullable=True)
-    location_y: Mapped[Optional[float]] = mapped_column(Numeric(10, 4), nullable=True)
-    direction_degrees: Mapped[Optional[float]] = mapped_column(
-        Numeric(5, 2), nullable=True
-    )
 
     __table_args__ = (
         CheckConstraint(
             "camera_type IN ('fixed','ptz','fisheye','thermal','anpr','360')",
             name="ck_camera_type",
         ),
-        CheckConstraint("fps > 0 AND fps <= 120", name="ck_camera_fps"),
+        CheckConstraint("fps IS NULL OR (fps > 0 AND fps <= 120)", name="ck_camera_fps"),
         CheckConstraint(
             "status IN ('online','offline','error','maintenance')",
             name="ck_camera_status",
-        ),
-        CheckConstraint(
-            "direction_degrees >= 0 AND direction_degrees < 360",
-            name="ck_camera_direction",
         ),
     )
 
