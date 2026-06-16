@@ -904,46 +904,39 @@ This script:
 > **Note:** If you already ran the full schema from Section 5 Step 2 (which includes `005_evap_web_tables.sql`),
 > you can skip this step.
 
-### Step 2 — Start the FastAPI backend
+### Step 2 — Start both services (one-click)
 
-Open a **new PowerShell window** in `c:\Users\user\Downloads\cctv_phase1`:
+**Option A — Double-click the batch file** (recommended):
+```
+start_evap.bat
+```
+This opens two windows (backend + frontend), logs everything to `logs\backend.log` and `logs\frontend.log`, and frees ports 8000/3000 automatically.
 
+**Option B — Manual (two PowerShell windows)**
+
+Window 1 — FastAPI backend:
 ```powershell
-$env:PYTHONPATH = "c:\Users\user\Downloads\cctv_phase1\evap\backend"
-& "c:\Users\user\Downloads\cctv_phase1\.venv\Scripts\uvicorn.exe" `
-    app.main:app `
-    --host 0.0.0.0 `
-    --port 8000 `
-    --reload `
-    --app-dir "c:\Users\user\Downloads\cctv_phase1\evap\backend"
+& "c:\Users\user\Downloads\cctv_phase1\.venv\Scripts\uvicorn.exe" app.main:app --host 0.0.0.0 --port 8000 --reload --app-dir "c:\Users\user\Downloads\cctv_phase1\evap\backend"
 ```
 
-Verify it's running:
-- Swagger UI → http://localhost:8000/docs
-- Health check → http://localhost:8000/health
-- ReDoc → http://localhost:8000/redoc
-
-### Step 3 — Start the React frontend
-
-Open another **new PowerShell window**:
-
+Window 2 — React frontend:
 ```powershell
 cd "c:\Users\user\Downloads\cctv_phase1\evap\frontend"
 npm start
 ```
 
-The browser will open automatically at **http://localhost:3000**
+Verify backend is running:
+- Swagger UI → http://localhost:8000/docs
+- Health check → http://localhost:8000/health
 
-### Step 4 — (Optional) Run the CCTV analytics engine simultaneously
+### Step 3 — (Optional) Run the CCTV analytics engine simultaneously
 
-In a **third PowerShell window** (for live data):
+In a third PowerShell window (for live data written to the database):
 
 ```powershell
 cd "c:\Users\user\Downloads\cctv_phase1"
 .\.venv\Scripts\python.exe phase3_main.py
 ```
-
-This writes live data into `cctv_analytics` which the API serves to the frontend.
 
 ### All services at a glance
 
@@ -954,14 +947,22 @@ This writes live data into `cctv_analytics` which the API serves to the frontend
 | CCTV analytics engine | `python phase3_main.py` | Terminal dashboard |
 | pgAdmin (DB GUI) | Open pgAdmin app | localhost:5050 |
 
-### Default login (after seed data runs)
+### Default login
 
 | Field | Value |
 |-------|-------|
 | Username | `admin` |
 | Password | `admin123` |
 
-> Change these immediately after first login via the Settings page.
+> Change this immediately after first login via the Settings page.
+
+### Known optional services
+
+Redis (`localhost:6379`) and RabbitMQ (`localhost:5672`) are **not required** to run the EVAP web platform. The backend logs a warning if they are unavailable but continues normally. All API endpoints work without them — caching and async messaging are simply disabled.
+
+### Dependency notes
+
+`passlib` is incompatible with `bcrypt>=4.0.0` (Python 3.13). The backend uses `bcrypt` directly instead of passlib for password hashing. If you see `AttributeError: module 'bcrypt' has no attribute '__about__'`, this fix is already applied — no action needed.
 
 ---
 
