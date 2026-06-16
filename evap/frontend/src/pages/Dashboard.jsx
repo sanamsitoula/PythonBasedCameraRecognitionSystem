@@ -6,7 +6,7 @@ import AlertsPanel from '../components/Dashboard/AlertsPanel';
 import CameraGrid from '../components/Dashboard/CameraGrid';
 import useWebSocket from '../hooks/useWebSocket';
 import {
-  RiGroupLine, RiUserCheckLine, RiCarLine, RiPercentLine,
+  RiGroupLine, RiUserFollowLine, RiCarLine, RiPercentLine,
   RiDoorOpenLine, RiBellLine,
 } from 'react-icons/ri';
 import {
@@ -107,7 +107,7 @@ export default function Dashboard() {
           <div key={i} className="col-6 col-md-4 col-xl-2"><CardSkeleton /></div>
         )) : [
           { title: 'People Present', value: s?.people_present ?? 0, icon: RiGroupLine, color: 'blue', trend: 'up', trendValue: '+12', subtitle: 'vs yesterday' },
-          { title: 'Visitors Today', value: s?.visitors_today ?? 0, icon: RiUserCheckLine, color: 'green', trend: 'up', trendValue: '+3', subtitle: 'on-site' },
+          { title: 'Visitors Today', value: s?.visitors_today ?? 0, icon: RiUserFollowLine, color: 'green', trend: 'up', trendValue: '+3', subtitle: 'on-site' },
           { title: 'Vehicles', value: s?.vehicles_present ?? 0, icon: RiCarLine, color: 'orange', trend: 'neutral', subtitle: 'in parking' },
           { title: 'Occupancy', value: s?.occupancy_percent ?? 0, icon: RiPercentLine, color: s?.occupancy_percent > 80 ? 'red' : 'purple', subtitle: 'of capacity' },
           { title: "Today's Entries", value: s?.today_entries ?? 0, icon: RiDoorOpenLine, color: 'yellow', trend: 'up', trendValue: '+8', subtitle: 'total today' },
