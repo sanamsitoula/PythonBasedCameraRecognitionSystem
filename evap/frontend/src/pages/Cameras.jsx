@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { camerasAPI } from '../services/api';
 import StatusBadge from '../components/common/StatusBadge';
 import toast from 'react-hot-toast';
 import {
   RiAddLine, RiEditLine, RiDeleteBinLine, RiRestartLine,
-  RiCameraLine, RiWifiLine, RiWifiOffLine,
+  RiCameraLine, RiWifiLine, RiWifiOffLine, RiSignalWifiLine,
 } from 'react-icons/ri';
 
 const CAMERA_TYPES = ['fixed', 'ptz', 'fisheye', 'thermal', 'anpr', '360'];
@@ -28,8 +28,12 @@ export default function CamerasPage() {
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [filterStatus, setFilterStatus] = useState('');
+  const [checking, setChecking] = useState(false);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load().then(checkAllHealth);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function load() {
     setLoading(true);
@@ -40,6 +44,21 @@ export default function CamerasPage() {
       setCameras([]);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function checkAllHealth() {
+    setChecking(true);
+    try {
+      await camerasAPI.healthCheckAll();
+      // Wait 4 s for background pings to finish, then reload statuses
+      await new Promise(r => setTimeout(r, 4000));
+      const res = await camerasAPI.getAll();
+      setCameras(res.data?.items || res.data || []);
+    } catch {
+      // silent — health check is best-effort
+    } finally {
+      setChecking(false);
     }
   }
 
@@ -129,9 +148,18 @@ export default function CamerasPage() {
             {cameras.length} camera{cameras.length !== 1 ? 's' : ''} registered
           </span>
         </div>
-        <button className="btn btn-primary btn-sm d-flex align-items-center gap-1" onClick={openAdd}>
-          <RiAddLine size={16} /> Add Camera
-        </button>
+        <div className="d-flex gap-2">
+          <button
+            className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
+            onClick={checkAllHealth} disabled={checking}
+            title="Ping all cameras via TCP:554 and update online/offline status">
+            <RiSignalWifiLine size={15} />
+            {checking ? 'Checking…' : 'Check Online'}
+          </button>
+          <button className="btn btn-primary btn-sm d-flex align-items-center gap-1" onClick={openAdd}>
+            <RiAddLine size={16} /> Add Camera
+          </button>
+        </div>
       </div>
 
       {/* Filter bar */}

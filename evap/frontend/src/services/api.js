@@ -56,7 +56,8 @@ export const authAPI = {
 export const camerasAPI = {
   ...makeCRUD('cameras'),
   getStatus: () => api.get('/cameras/status'),
-  getStreamHealth: (id) => api.get(`/cameras/${id}/health`),
+  checkHealth: (id) => api.get(`/cameras/${id}/health`),
+  healthCheckAll: () => api.post('/cameras/health-check-all'),
   restartStream: (id) => api.post(`/cameras/${id}/restart`),
 };
 

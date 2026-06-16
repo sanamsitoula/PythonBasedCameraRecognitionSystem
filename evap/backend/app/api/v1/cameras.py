@@ -3,15 +3,16 @@ Camera management API — uses camera_master table via CameraMaster model.
 """
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
+from app.core.database import AsyncSessionLocal, get_db
 from app.core.dependencies import get_current_active_user
 from app.core.security import encrypt_rtsp_url
 from app.models.camera import CameraMaster
@@ -231,3 +232,75 @@ async def restart_stream(
     cam.last_heartbeat = datetime.now(timezone.utc)
     await db.commit()
     return {"camera_id": camera_id, "status": "restarted"}
+
+
+# ---------------------------------------------------------------------------
+# Health-check helpers
+# ---------------------------------------------------------------------------
+async def _tcp_ping(ip: str, port: int = 554, timeout: float = 3.0) -> bool:
+    """Return True if a TCP connection to ip:port succeeds within timeout."""
+    try:
+        _, writer = await asyncio.wait_for(
+            asyncio.open_connection(ip, port), timeout=timeout
+        )
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except Exception:
+            pass
+        return True
+    except Exception:
+        return False
+
+
+async def _update_camera_status(camera_id: int, ip: str) -> dict:
+    """Ping camera and write online/offline + heartbeat to DB."""
+    reachable = await _tcp_ping(ip)
+    new_status = "online" if reachable else "offline"
+    async with AsyncSessionLocal() as db:
+        cam = (await db.execute(
+            select(CameraMaster).where(CameraMaster.camera_id == camera_id)
+        )).scalar_one_or_none()
+        if cam:
+            cam.status = new_status
+            cam.last_heartbeat = datetime.now(timezone.utc)
+            await db.commit()
+    return {"camera_id": camera_id, "status": new_status, "reachable": reachable}
+
+
+@router.get("/{camera_id}/health")
+async def check_camera_health(
+    camera_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_active_user),
+):
+    """Ping the camera's IP:554 and update status in DB. Returns immediately with result."""
+    cam = (await db.execute(
+        select(CameraMaster).where(CameraMaster.camera_id == camera_id)
+    )).scalar_one_or_none()
+    if not cam:
+        raise HTTPException(status_code=404, detail="Camera not found")
+    if not cam.ip_address:
+        return {"camera_id": camera_id, "status": cam.status, "reachable": False, "error": "No IP configured"}
+
+    result = await _update_camera_status(camera_id, str(cam.ip_address))
+    return result
+
+
+@router.post("/health-check-all", status_code=status.HTTP_202_ACCEPTED)
+async def health_check_all(
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_active_user),
+):
+    """Ping all active cameras in background and update their status."""
+    cams = (await db.execute(
+        select(CameraMaster).where(CameraMaster.is_active == True, CameraMaster.ip_address.isnot(None))
+    )).scalars().all()
+
+    async def _check_all():
+        tasks = [_update_camera_status(c.camera_id, str(c.ip_address)) for c in cams]
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    background_tasks.add_task(_check_all)
+    return {"queued": len(cams), "message": "Health check started for all cameras"}
