@@ -29,7 +29,10 @@ export default function LoginPage() {
         navigate('/');
       }
     } catch (err) {
-      const msg = err?.response?.data?.detail || err?.response?.data?.message || 'Invalid credentials. Please try again.';
+      const detail = err?.response?.data?.detail;
+      const msg = Array.isArray(detail)
+        ? detail.map((d) => d.msg).join('; ')
+        : (typeof detail === 'string' ? detail : err?.response?.data?.message || 'Invalid credentials. Please try again.');
       setError(msg);
     } finally {
       setLoading(false);

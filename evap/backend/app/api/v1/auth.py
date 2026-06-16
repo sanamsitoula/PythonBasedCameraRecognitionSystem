@@ -50,14 +50,12 @@ class MFAVerifyRequest(BaseModel):
 
 
 class UserProfile(BaseModel):
-    id: str
+    id: int
     username: str
     email: str
-    full_name: str | None
-    phone: str | None
+    role: str
     is_active: bool
     mfa_enabled: bool
-    role_id: int | None
 
     class Config:
         from_attributes = True
@@ -98,7 +96,7 @@ async def login(
     user.last_login = datetime.now(timezone.utc)
     await db.commit()
 
-    token_data = {"sub": user.id, "username": user.username}
+    token_data = {"sub": str(user.id), "username": user.username}
     return TokenResponse(
         access_token=create_access_token(token_data),
         refresh_token=create_refresh_token(token_data),
@@ -124,7 +122,7 @@ async def refresh_token(
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
-    token_data = {"sub": user.id, "username": user.username}
+    token_data = {"sub": str(user.id), "username": user.username}
     return TokenResponse(
         access_token=create_access_token(token_data),
         refresh_token=create_refresh_token(token_data),

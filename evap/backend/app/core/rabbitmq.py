@@ -40,12 +40,22 @@ async def get_connection() -> AbstractRobustConnection:
 
 
 async def init_rabbitmq() -> None:
-    """Establish connection and declare all queues."""
-    conn = await get_connection()
-    async with conn.channel() as channel:
-        await channel.set_qos(prefetch_count=10)
-        for queue_name in ALL_QUEUES:
-            await channel.declare_queue(queue_name, durable=True)
+    """Establish connection and declare all queues. Non-fatal — app runs without RabbitMQ."""
+    import logging
+    logger = logging.getLogger(__name__)
+    try:
+        conn = await get_connection()
+        async with conn.channel() as channel:
+            await channel.set_qos(prefetch_count=10)
+            for queue_name in ALL_QUEUES:
+                await channel.declare_queue(queue_name, durable=True)
+        logger.info("RabbitMQ connected")
+    except Exception as exc:
+        logger.warning(
+            "RabbitMQ unavailable (%s). Async messaging disabled. "
+            "Install RabbitMQ or set RABBITMQ_URL to suppress this warning.",
+            exc,
+        )
 
 
 async def close_rabbitmq() -> None:
@@ -59,19 +69,22 @@ async def close_rabbitmq() -> None:
 # Publish helper
 # ---------------------------------------------------------------------------
 async def publish_message(queue_name: str, message_dict: Any) -> None:
-    """Serialize message_dict to JSON and publish to the named durable queue."""
-    conn = await get_connection()
-    async with conn.channel() as channel:
-        queue = await channel.declare_queue(queue_name, durable=True)
-        body = json.dumps(message_dict, default=str).encode()
-        await channel.default_exchange.publish(
-            Message(
-                body=body,
-                content_type="application/json",
-                delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
-            ),
-            routing_key=queue_name,
-        )
+    """Serialize message_dict to JSON and publish to the named durable queue. No-op if RabbitMQ is down."""
+    try:
+        conn = await get_connection()
+        async with conn.channel() as channel:
+            await channel.declare_queue(queue_name, durable=True)
+            body = json.dumps(message_dict, default=str).encode()
+            await channel.default_exchange.publish(
+                Message(
+                    body=body,
+                    content_type="application/json",
+                    delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
+                ),
+                routing_key=queue_name,
+            )
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------

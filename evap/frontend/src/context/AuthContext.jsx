@@ -55,13 +55,25 @@ export function AuthProvider({ children }) {
   }, [token, logout]);
 
   const login = async (username, password, mfaCode = null) => {
-    const payload = { username, password };
-    if (mfaCode) payload.mfa_code = mfaCode;
-    const res = await axios.post(`${API_BASE}/api/v1/auth/login`, payload);
-    const { access_token, user: userData, mfa_required } = res.data;
-    if (mfa_required) {
-      return { mfa_required: true };
-    }
+    // OAuth2PasswordRequestForm requires application/x-www-form-urlencoded
+    const formData = new URLSearchParams();
+    formData.append('username', username);
+    formData.append('password', password);
+    if (mfaCode) formData.append('mfa_code', mfaCode);
+
+    const res = await axios.post(`${API_BASE}/api/v1/auth/login`, formData, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    });
+
+    const { access_token, mfa_required } = res.data;
+    if (mfa_required) return { mfa_required: true };
+
+    // Fetch user profile with the new token
+    const meRes = await axios.get(`${API_BASE}/api/v1/auth/me`, {
+      headers: { Authorization: `Bearer ${access_token}` },
+    });
+    const userData = meRes.data;
+
     localStorage.setItem('evap_token', access_token);
     localStorage.setItem('evap_user', JSON.stringify(userData));
     setToken(access_token);
