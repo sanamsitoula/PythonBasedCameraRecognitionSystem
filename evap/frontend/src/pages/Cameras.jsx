@@ -32,8 +32,7 @@ export default function CamerasPage() {
 
   useEffect(() => {
     load().then(checkAllHealth);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, []); // intentional: run once on mount
 
   async function load() {
     setLoading(true);
