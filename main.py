@@ -30,6 +30,7 @@ from snapshot_manager import (
 )
 from health_monitor import HealthMonitor
 from ai_analyst import AiAnalyst
+from config_manager import build_ai_providers
 from dashboard import (
     Dashboard,
     DashboardState,
@@ -141,14 +142,13 @@ def main() -> None:
     # ── 6b. AI analyst ────────────────────────────────────────────────────
     analyst: AiAnalyst | None = None
     if config.ai.enabled:
-        if not config.ai.api_key:
-            log.warning("AI analyst enabled but no API key set – skipping.")
+        providers = build_ai_providers(config.ai)
+        if not providers:
+            log.warning("AI analyst enabled but no API keys set – skipping.")
         else:
             analyst = AiAnalyst(
-                api_key=config.ai.api_key,
-                model=config.ai.model,
+                providers=providers,
                 interval=config.ai.interval_seconds,
-                base_url=config.ai.base_url,
             )
             analyst.start()
             append_log("AI analyst started")

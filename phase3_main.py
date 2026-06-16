@@ -280,12 +280,12 @@ def main() -> None:
     # ── 9. FaceRecognitionEngine ──────────────────────────────────────────────
     face_cfg = config.face_recognition
     face_engine = FaceRecognitionEngine(
-        backend           = face_cfg.backend,
-        model_dir         = face_cfg.model_dir,
-        min_confidence    = face_cfg.min_confidence,
-        confirmed_threshold = face_cfg.confirmed_threshold,
-        possible_threshold  = face_cfg.possible_threshold,
+        backend        = face_cfg.backend,
+        model_dir      = face_cfg.model_dir,
+        min_confidence = face_cfg.min_confidence,
     )
+    face_engine.CONFIRMED_THRESHOLD = face_cfg.confirmed_threshold
+    face_engine.POSSIBLE_THRESHOLD  = face_cfg.possible_threshold
 
     # ── 10. EmployeeIdentifier ────────────────────────────────────────────────
     emp_identifier = EmployeeIdentifier(

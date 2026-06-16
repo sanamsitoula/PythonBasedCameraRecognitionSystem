@@ -2,6 +2,19 @@
 -- CCTV Analytics Phase 2 – PostgreSQL Schema
 -- Run once to create all tables and indexes.
 -- Safe to re-run: uses CREATE TABLE IF NOT EXISTS.
+--
+-- PREREQUISITES (run as postgres superuser first):
+--   CREATE ROLE cctv_user LOGIN PASSWORD 'Nepal@123';
+--   CREATE DATABASE cctv_analytics OWNER cctv_user;
+--   \c cctv_analytics
+--   GRANT USAGE ON SCHEMA public TO cctv_user;
+--   ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO cctv_user;
+--   ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO cctv_user;
+--
+-- Run this file:
+--   psql -h localhost -U cctv_user -d cctv_analytics -f sql/schema.sql
+--
+-- For a full one-step setup, use sql/000_setup.sql instead.
 -- ============================================================
 
 -- ----------------------------------------------------------

@@ -1,0 +1,88 @@
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+  scrape_timeout:      10s
+  external_labels:
+    cluster: evap-production
+    env: production
+
+rule_files:
+  - "alerts.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+      timeout: 10s
+      api_version: v2
+
+scrape_configs:
+  # ── EVAP FastAPI Backend ────────────────────────────────────────────────────
+  - job_name: 'evap-backend'
+    static_configs:
+      - targets: ['backend:8000']
+        labels:
+          service: backend
+          app: evap
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # ── PostgreSQL Exporter ─────────────────────────────────────────────────────
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+        labels:
+          service: postgres
+          app: evap
+    scrape_interval: 30s
+
+  # ── Redis Exporter ──────────────────────────────────────────────────────────
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+        labels:
+          service: redis
+          app: evap
+    scrape_interval: 15s
+
+  # ── RabbitMQ Prometheus Plugin ──────────────────────────────────────────────
+  - job_name: 'rabbitmq'
+    static_configs:
+      - targets: ['rabbitmq:15692']
+        labels:
+          service: rabbitmq
+          app: evap
+    scrape_interval: 15s
+
+  # ── Node Exporter (host metrics) ────────────────────────────────────────────
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          service: node
+          app: evap
+    scrape_interval: 30s
+
+  # ── Celery / Flower metrics ──────────────────────────────────────────────────
+  - job_name: 'celery'
+    static_configs:
+      - targets: ['flower:5555']
+        labels:
+          service: celery
+          app: evap
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  # ── Nginx metrics (via nginx-prometheus-exporter) ───────────────────────────
+  - job_name: 'nginx'
+    static_configs:
+      - targets: ['nginx-exporter:9113']
+        labels:
+          service: nginx
+          app: evap
+    scrape_interval: 15s
+
+  # ── Prometheus self-scrape ───────────────────────────────────────────────────
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

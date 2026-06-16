@@ -11,6 +11,12 @@ env/
 
 # Sensitive config (contains real credentials & API keys)
 config/config.ini
+evap/backend/.env
+
+# Node / frontend
+evap/frontend/node_modules/
+evap/frontend/build/
+evap/frontend/.env.local
 
 # YOLO / ML model weights (large binaries)
 models/*.pt

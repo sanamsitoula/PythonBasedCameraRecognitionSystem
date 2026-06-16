@@ -1,9 +1,17 @@
-# CCTV Analytics – Phase 1 & Phase 2
+# CCTV Analytics – Phase 1, 2 & 3
 
-A complete video analytics system for RTSP cameras. It detects and tracks
-people and vehicles, classifies gender, counts entries and exits, monitors
-zones, and stores everything in a database — all running on a single Windows
-machine with a standard i7 CPU or an RTX 4060 GPU.
+A complete video analytics system for RTSP cameras. Detects and tracks people and vehicles, classifies gender, counts entries and exits, recognises employees by face, manages attendance and visitors, and stores everything in PostgreSQL — all on a single Windows machine.
+
+---
+
+## Quick Navigation
+
+| Section | Link |
+|---------|------|
+| Feature traceability (CLI → UI → API → DB) | [Section 14](#14-feature-traceability-cli--ui--api--db) |
+| Running the full UI application | [Section 15](#15-running-the-full-ui-application) |
+| Database setup | [Section 5](#5-database-setup) |
+| Installation | [Section 4](#4-installation--step-by-step) |
 
 ---
 
@@ -11,14 +19,14 @@ machine with a standard i7 CPU or an RTX 4060 GPU.
 
 1. [What the system does](#1-what-the-system-does)
 2. [Folder structure](#2-folder-structure)
-3. [How every file fits together](#3-how-every-file-fits-together)
-4. [Requirements](#4-requirements)
-5. [Installation — step by step](#5-installation--step-by-step)
-6. [Configuration — step by step](#6-configuration--step-by-step)
+3. [Requirements](#3-requirements)
+4. [Installation — step by step](#4-installation--step-by-step)
+5. [Database setup](#5-database-setup)
+6. [Configuration](#6-configuration)
 7. [Running the system](#7-running-the-system)
 8. [Reading the dashboard](#8-reading-the-dashboard)
 9. [Where data is saved](#9-where-data-is-saved)
-10. [Setting up the database](#10-setting-up-the-database)
+10. [Enrolling employees (Phase 3)](#10-enrolling-employees-phase-3)
 11. [Running the tests](#11-running-the-tests)
 12. [Troubleshooting](#12-troubleshooting)
 13. [Flow diagram](#13-flow-diagram)
@@ -27,30 +35,31 @@ machine with a standard i7 CPU or an RTX 4060 GPU.
 
 ## 1. What the system does
 
-**Phase 1** (already built)
-
-- Connects to an IP camera over RTSP (the standard video streaming protocol
-  used by almost every security camera brand).
-- Detects people and vehicles in every frame using YOLO, a fast AI detection
-  model.
+### Phase 1 — Detection & monitoring
+- Connects to an IP camera over RTSP.
+- Detects people and vehicles in every frame using YOLOv11.
 - Shows a live console dashboard with counts, system health, and camera status.
-- Saves snapshot images when something is detected.
-- Sends periodic scene summaries to an AI (OpenRouter) for analysis.
+- Saves snapshot images on detection.
+- Sends periodic scene summaries to an AI (Gemini / Claude / OpenRouter / DeepSeek).
 
-**Phase 2** (this document)
+### Phase 2 — Tracking & analytics
+- Tracks each person and vehicle with a unique persistent ID (P-0001, V-0001).
+- Classifies gender (Male / Female) once per person using DeepFace.
+- Determines movement direction per track.
+- Counts entries and exits through a configurable virtual line.
+- Detects which named zone a person or vehicle is currently inside.
+- Calculates live occupancy (current / peak / rolling average).
+- Saves all events to PostgreSQL for reporting.
 
-- Tracks each detected person and vehicle with a unique ID across many frames
-  (e.g. P-0001 stays P-0001 even if the person walks behind a pillar briefly).
-- Classifies gender (Male / Female) once per person using DeepFace AI.
-- Determines movement direction (e.g. LEFT → RIGHT).
-- Counts how many people walk IN or OUT through a virtual line you draw on the
-  camera view.
-- Detects which named zone (e.g. "Lobby", "Warehouse") a person or vehicle is
-  currently inside.
-- Calculates live occupancy (how many people are inside right now, the daily
-  peak, and the rolling average).
-- Saves all events to a PostgreSQL database for later reporting.
-- Saves snapshot photos to organised subfolders.
+### Phase 3 — Face recognition & enterprise features
+- Recognises named employees from enrolled face photos ("Alice entered at 09:02").
+- Records attendance automatically — entry time, exit time, lateness.
+- Manages visitors — logs first appearance, tracks movement, stores face snapshot.
+- Canteen analytics — tracks meal-period visits per person.
+- Department analytics — who is in the office / canteen / absent per department.
+- Cross-camera re-identification — follows a person across multiple camera feeds.
+- Smart alerts — restricted zone, after-hours, loitering, crowd threshold.
+- Audit logging for all identity and attendance events.
 
 ---
 
@@ -58,19 +67,13 @@ machine with a standard i7 CPU or an RTX 4060 GPU.
 
 ```
 cctv_phase1/
-│
 ├── config/
-│   └── config.ini              ← All settings live here (camera IP, zones, etc.)
+│   ├── config.ini              ← All settings (camera, DB, zones, etc.)
+│   └── config.ini.example      ← Safe template — copy this to create config.ini
 │
-├── logs/
-│   ├── application.log         ← General system messages
-│   ├── camera.log              ← Camera connection events
-│   ├── tracking.log            ← Track open/close events (Phase 2)
-│   ├── analytics.log           ← Entry/exit/zone events (Phase 2)
-│   ├── database.log            ← Database write activity (Phase 2)
-│   ├── gender.log              ← Gender classification results (Phase 2)
-│   ├── vehicle.log             ← Vehicle detection events (Phase 2)
-│   └── error.log               ← Warnings and errors (all phases)
+├── sql/
+│   ├── schema.sql              ← Phase 2 tables (run once)
+│   └── schema_p3.sql           ← Phase 3 tables (run once after schema.sql)
 │
 ├── models/
 │   └── yolo11n.pt              ← YOLO model (auto-downloaded on first run)
@@ -78,484 +81,415 @@ cctv_phase1/
 ├── snapshots/
 │   ├── people/                 ← Cropped person images
 │   ├── vehicles/               ← Cropped vehicle images
-│   ├── entry/                  ← Frames captured at entry crossing
-│   ├── exit/                   ← Frames captured at exit crossing
-│   └── gender/                 ← Cropped face images with gender label
+│   ├── entry/                  ← Frames at entry crossing
+│   ├── exit/                   ← Frames at exit crossing
+│   └── gender/                 ← Cropped images with gender label
 │
-├── sql/
-│   └── schema.sql              ← Run this once to create the database tables
+├── logs/
+│   ├── application.log
+│   ├── camera.log
+│   ├── tracking.log
+│   ├── analytics.log
+│   ├── database.log
+│   ├── gender.log
+│   ├── vehicle.log
+│   ├── recognition.log         ← Phase 3: face recognition events
+│   ├── attendance.log          ← Phase 3: clock-in / clock-out
+│   ├── alerts.log              ← Phase 3: smart alert events
+│   └── error.log
 │
 ├── tests/
 │   ├── unit/                   ← Fast tests, no camera or DB needed
-│   │   ├── test_direction_detector.py
-│   │   ├── test_line_counter.py
-│   │   ├── test_zone_manager.py
-│   │   ├── test_occupancy_engine.py
-│   │   ├── test_vehicle_analytics.py
-│   │   └── test_gender_classifier.py
-│   └── integration/            ← Tests that need a running PostgreSQL
-│       ├── test_db_manager.py
-│       └── test_full_pipeline.py
+│   └── integration/            ← Requires running PostgreSQL
 │
-│── Phase 1 files (already existed)
 ├── main.py                     ← Phase 1 entry point
-├── config_manager.py           ← Reads config.ini into Python objects
-├── detection.py                ← YOLO object detection
-├── rtsp_capture.py             ← Connects to camera and reads frames
-├── camera_verifier.py          ← Checks camera before starting
-├── health_monitor.py           ← Tracks CPU and RAM usage
-├── snapshot_manager.py         ← Saves detection snapshots (Phase 1)
-├── dashboard.py                ← Phase 1 console dashboard
-├── logger.py                   ← Sets up all log files
-├── ai_analyst.py               ← Sends scene summaries to OpenRouter AI
-│
-│── Phase 2 files (new)
-├── phase2_main.py              ← Phase 2 entry point  ← RUN THIS
-├── analytics_state.py          ← Shared live data read by the dashboard
-├── tracker.py                  ← ByteTrack wrapper (assigns P-0001 / V-0001 IDs)
-├── gender_classifier.py        ← DeepFace / InsightFace gender detection
-├── direction_detector.py       ← Determines movement direction per track
-├── line_counter.py             ← Counts entries and exits at a virtual line
-├── zone_manager.py             ← Detects which zone a person/vehicle is in
-├── occupancy_engine.py         ← Tracks current/peak/average occupancy
-├── vehicle_analytics.py        ← Per-type vehicle counting
-├── db_manager.py               ← PostgreSQL connection and table management
-├── db_writer.py                ← Background thread that writes to the DB
-├── snapshot_manager_v2.py      ← Extended snapshots with subfolders
-├── phase2_dashboard.py         ← Phase 2 console dashboard
-│
-└── requirements.txt            ← Python package list
+├── phase2_main.py              ← Phase 2 entry point
+├── phase3_main.py              ← Phase 3 entry point  ← USE THIS
+├── enrollment_cli.py           ← Enrol employee faces into DB
+├── requirements.txt
+├── INSTALLATION_GUIDE.md
+└── TESTING_GUIDE.md
 ```
 
 ---
 
-## 3. How every file fits together
+## 3. Requirements
 
-Think of the system as an assembly line:
-
-```
-Camera → rtsp_capture.py
-              ↓ raw video frames
-         tracker.py  (ByteTrack)
-              ↓ List of tracked objects with IDs
-         ┌────────────────────────────────────┐
-         │  For each tracked person:           │
-         │    gender_classifier.py            │
-         │    direction_detector.py           │
-         │    line_counter.py     → occupancy_engine.py
-         │    zone_manager.py                 │
-         └────────────────────────────────────┘
-         ┌────────────────────────────────────┐
-         │  For each tracked vehicle:          │
-         │    direction_detector.py           │
-         │    vehicle_analytics.py            │
-         └────────────────────────────────────┘
-              ↓ events
-         db_writer.py  (background thread)
-              ↓ batched SQL inserts
-         db_manager.py → PostgreSQL database
-              ↓
-         analytics_state.py  (shared live numbers)
-              ↓
-         phase2_dashboard.py  (Rich console UI)
-```
-
-Every module has one job:
-
-| File | Job |
-|------|-----|
-| `rtsp_capture.py` | Grabs video frames from the camera |
-| `tracker.py` | Gives every person/vehicle a unique ID that persists across frames |
-| `gender_classifier.py` | Looks at each person once and decides Male/Female |
-| `direction_detector.py` | Watches where a track moves and labels the direction |
-| `line_counter.py` | Fires an event when a track crosses a virtual line |
-| `zone_manager.py` | Tells you which named area a track is currently inside |
-| `occupancy_engine.py` | Counts how many people are inside right now |
-| `vehicle_analytics.py` | Counts cars, motorcycles, buses, trucks, bicycles |
-| `db_manager.py` | Opens a connection pool to PostgreSQL and creates the tables |
-| `db_writer.py` | Receives events from a queue and writes them to the DB in the background |
-| `analytics_state.py` | A shared memory space the dashboard reads from |
-| `phase2_dashboard.py` | Draws the terminal UI with all live numbers |
-| `phase2_main.py` | Starts everything up, runs the main loop, shuts down cleanly |
-
----
-
-## 4. Requirements
-
-**Hardware**
+### Hardware
 
 | Component | Minimum | Recommended |
 |-----------|---------|-------------|
-| CPU | Intel i5 | Intel i7 / i9 |
+| CPU | Intel i5 (8th gen+) | Intel i7 / Ryzen 7 |
 | RAM | 16 GB | 32 GB |
-| GPU | None (CPU mode) | NVIDIA RTX 4060 or higher |
-| Storage | 20 GB free | 100 GB+ (for snapshots and DB) |
+| GPU | None (CPU mode) | NVIDIA RTX 4060 (CUDA 12.x) |
+| Storage | 20 GB free | 100 GB+ (snapshots + DB) |
 
-**Software**
+### Software
 
 - Windows 10 / 11 (64-bit) or Windows Server 2022
-- Python 3.11 or 3.13
-- FFmpeg (for RTSP decoding)
-- PostgreSQL 14+ (only if you want database storage)
-- An IP camera that supports RTSP streaming
+- Python 3.13
+- FFmpeg (RTSP decoding)
+- PostgreSQL 15
+- An IP camera with RTSP support
 
 ---
 
-## 5. Installation — step by step
+## 4. Installation — step by step
 
-### Step 1 — Install Python
+### Step 1 — Install Python 3.13
 
-Download Python 3.11 or 3.13 from https://www.python.org/downloads/
-During installation, tick **"Add Python to PATH"**.
+Download from https://www.python.org/downloads/ — tick **"Add Python to PATH"** during setup.
 
-Verify it works by opening a Command Prompt and typing:
+Verify:
 ```
 python --version
 ```
 
 ### Step 2 — Install FFmpeg
 
-1. Download the Windows build from https://www.gyan.dev/ffmpeg/builds/
-   (choose "ffmpeg-release-essentials.zip")
-2. Extract the zip to `C:\ffmpeg`
-3. Add `C:\ffmpeg\bin` to your Windows PATH:
-   - Press Win + R, type `sysdm.cpl`, press Enter
-   - Click Advanced → Environment Variables
-   - Under System Variables, find `Path`, click Edit
-   - Click New, type `C:\ffmpeg\bin`, click OK
+1. Download from https://www.gyan.dev/ffmpeg/builds/ → `ffmpeg-release-essentials.zip`
+2. Extract to `C:\ffmpeg`
+3. Add `C:\ffmpeg\bin` to your System PATH (Win + R → `sysdm.cpl` → Advanced → Environment Variables)
 
 Verify:
 ```
 ffmpeg -version
 ```
 
-### Step 3 — Create a virtual environment (recommended)
+### Step 3 — Create virtual environment
 
-Open a Command Prompt inside the `cctv_phase1` folder and run:
+```powershell
+cd C:\Users\user\Downloads\cctv_phase1
+python -m venv .venv
+.\.venv\Scripts\activate
 ```
-python -m venv venv
-venv\Scripts\activate
-```
-
-You will see `(venv)` appear before the prompt. Always activate this before
-running the system.
 
 ### Step 4 — Install Python packages
 
-With the virtual environment active:
-```
+```powershell
 pip install -r requirements.txt
 ```
 
-This installs all required packages including OpenCV, ultralytics (YOLO),
-Rich (dashboard), DeepFace (gender), and psycopg2 (database).
-
-> **Note:** DeepFace will download additional AI model files (~300 MB) the
-> first time gender classification runs. This is normal.
-
-### Step 5 — Install GPU support (optional but recommended)
-
-If you have an NVIDIA GPU (RTX 4060 or newer), uncomment the GPU lines in
-`requirements.txt` and run:
-```
-pip install torch>=2.3.0+cu121 torchvision>=0.18.0+cu121 --index-url https://download.pytorch.org/whl/cu121
+#### CPU-only (no GPU)
+```powershell
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 ```
 
-### Step 6 — Install PostgreSQL (optional)
-
-Only needed if you want data saved permanently to a database.
-
-1. Download from https://www.postgresql.org/download/windows/
-2. Install with the default options. Remember the password you set for the
-   `postgres` user.
-3. After installation, open pgAdmin or the PostgreSQL shell and create the
-   database and user:
-
-```sql
-CREATE USER cctv_user WITH PASSWORD 'cctv_pass';
-CREATE DATABASE cctv_analytics OWNER cctv_user;
+#### NVIDIA GPU (CUDA 12.x)
+```powershell
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 ```
 
-4. Run the schema file to create all tables:
+Verify GPU:
+```powershell
+python -c "import torch; print(torch.cuda.is_available())"
 ```
-psql -U cctv_user -d cctv_analytics -f sql/schema.sql
-```
+
+### Step 5 — Install PostgreSQL 15
+
+Download from https://www.postgresql.org/download/windows/ and install with defaults.
+The installer sets a password for the `postgres` superuser — remember it.
 
 ---
 
-## 6. Configuration — step by step
+## 5. Database setup
 
-Open `config/config.ini` in any text editor (Notepad works fine).
+### Step 1 — Create user and database
 
-### Camera settings
+Open pgAdmin or run these in psql as the `postgres` superuser:
 
+```sql
+CREATE ROLE cctv_user LOGIN PASSWORD 'Nepal@123';
+CREATE DATABASE cctv_analytics OWNER cctv_user;
+
+\c cctv_analytics
+
+GRANT CONNECT ON DATABASE cctv_analytics TO cctv_user;
+GRANT USAGE ON SCHEMA public TO cctv_user;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO cctv_user;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO cctv_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO cctv_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO cctv_user;
+```
+
+Or using the command line:
+```powershell
+$env:PGPASSWORD = "your_postgres_password"
+& "C:\Program Files\PostgreSQL\15\bin\psql.exe" -h localhost -U postgres -c "CREATE ROLE cctv_user LOGIN PASSWORD 'Nepal@123';"
+& "C:\Program Files\PostgreSQL\15\bin\psql.exe" -h localhost -U postgres -c "CREATE DATABASE cctv_analytics OWNER cctv_user;"
+```
+
+### Step 2 — Run schema migrations
+
+Run Phase 2 tables first, then Phase 3 tables:
+
+```powershell
+$env:PGPASSWORD = "Nepal@123"
+$psql = "C:\Program Files\PostgreSQL\15\bin\psql.exe"
+
+# Phase 2 — 11 tables
+& $psql -h localhost -U cctv_user -d cctv_analytics -f sql\schema.sql
+
+# Phase 3 — 14 additional tables
+& $psql -h localhost -U cctv_user -d cctv_analytics -f sql\schema_p3.sql
+```
+
+Both scripts use `CREATE TABLE IF NOT EXISTS` — safe to re-run, will never delete data.
+
+### Step 3 — Verify (25 tables total)
+
+```powershell
+& $psql -h localhost -U cctv_user -d cctv_analytics -c "\dt"
+```
+
+Expected tables:
+
+| Phase 2 (11) | Phase 3 (14) |
+|---|---|
+| cameras | employee_master |
+| sessions | employee_face_master |
+| tracked_objects | face_embeddings |
+| gender_classifications | recognized_persons |
+| direction_events | visitor_master |
+| line_crossings | visitor_tracking |
+| zone_events | attendance_log |
+| occupancy_snapshots | employee_zone_history |
+| vehicle_counts | canteen_visits |
+| error_events | movement_history |
+| system_health_snapshots | department_analytics |
+| | cross_camera_tracking |
+| | smart_alerts |
+| | audit_log |
+
+### DB credentials (current setup)
+
+| Setting | Value |
+|---------|-------|
+| Host | localhost |
+| Port | 5432 |
+| Database | cctv_analytics |
+| User | cctv_user |
+| Password | Nepal@123 |
+
+---
+
+## 6. Configuration
+
+Copy the example and edit your settings:
+
+```powershell
+Copy-Item config\config.ini.example config\config.ini
+```
+
+Key sections in `config/config.ini`:
+
+### Camera
 ```ini
 [CAMERA]
-ip = 10.30.0.161          ← Change to your camera's IP address
-username = admin           ← Camera login username
-password = nepal@123       ← Camera login password
+ip       = 10.30.0.161
+username = admin
+password = nepal@123
 rtsp_url = rtsp://admin:nepal@123@10.30.0.161:554/cam/realmonitor?channel=1&subtype=0
 ```
 
-The RTSP URL format varies by camera brand. Common formats:
-- **Dahua/HikVision:** `rtsp://user:pass@ip:554/cam/realmonitor?channel=1&subtype=0`
-- **Generic:** `rtsp://user:pass@ip:554/stream1`
-
-### Virtual counting line
-
-This is an invisible line across the camera view. When a person crosses it,
-the system counts them as entering or exiting.
-
+### Database
 ```ini
-[LINE_COUNTER]
-line_1 = 0,540 1920,540      ← Start point (x,y) and end point (x,y)
-line_1_label = MainEntrance  ← A name for this line
-line_1_entry_direction = TOP_TO_BOTTOM  ← People moving downward = entering
+[DATABASE]
+enabled  = true
+host     = localhost
+port     = 5432
+dbname   = cctv_analytics
+user     = cctv_user
+password = Nepal@123
 ```
 
-To figure out good coordinates: look at your camera's resolution (e.g.
-1920×1080). A horizontal line halfway down would be `0,540 1920,540`.
+### Virtual counting line
+```ini
+[LINE_COUNTER]
+line_1           = 0,180 640,180
+line_1_label     = MainEntrance
+line_1_entry_direction = TOP_TO_BOTTOM
+```
 
-Entry direction options:
-- `TOP_TO_BOTTOM` — people moving from top to bottom of screen = entry
-- `BOTTOM_TO_TOP` — people moving from bottom to top = entry
-- `LEFT_TO_RIGHT` — for vertical lines
-- `RIGHT_TO_LEFT` — for vertical lines
-
-### Zone definitions
-
-Zones are areas on the camera view defined by corner points.
-
+### Zones
 ```ini
 [ZONES]
-zone_1 = 0,0 640,0 640,540 0,540   ← Four corners of a rectangle (x,y pairs)
-zone_1_label = Zone A               ← Name shown on the dashboard
-zone_2 = 640,0 1280,0 1280,540 640,540
+zone_1       = 0,0 320,0 320,360 0,360
+zone_1_label = Zone A
+zone_2       = 320,0 640,0 640,360 320,360
 zone_2_label = Zone B
 ```
 
-For a 1920×1080 camera, the full frame would be:
-`0,0 1920,0 1920,1080 0,1080`
-
-### Gender classification
-
-```ini
-[GENDER]
-enabled = true
-backend = deepface          ← Use deepface (easier) or insightface (faster)
-confidence_threshold = 0.65 ← Only accept results with 65%+ confidence
-```
-
-### Database
-
-```ini
-[DATABASE]
-enabled = false             ← Change to true to save data to PostgreSQL
-host = localhost
-port = 5432
-dbname = cctv_analytics
-user = cctv_user
-password = cctv_pass        ← Or set CCTV_DB_PASSWORD environment variable
-```
-
-### AI analysis (OpenRouter)
-
+### AI providers (optional — any one key is enough)
 ```ini
 [AI]
-enabled = true
-api_key = YOUR_KEY_HERE     ← Your OpenRouter API key
-model = openai/gpt-4o
-interval_seconds = 30       ← Send a scene summary every 30 seconds
+enabled           = true
+gemini_api_key    = YOUR_GEMINI_KEY
+anthropic_api_key = YOUR_CLAUDE_KEY
+openrouter_api_key = YOUR_OPENROUTER_KEY
+deepseek_api_key  = YOUR_DEEPSEEK_KEY
 ```
 
 ---
 
 ## 7. Running the system
 
-### Phase 2 (full analytics)
+Always activate the virtual environment first:
 
+```powershell
+.\.venv\Scripts\activate
 ```
-venv\Scripts\activate
+
+### Phase 3 — full feature set (recommended)
+```powershell
+python phase3_main.py
+```
+
+### Phase 2 — tracking + gender + DB (no face recognition)
+```powershell
 python phase2_main.py
 ```
 
-### Phase 1 (detection only, no tracking)
-
-```
-venv\Scripts\activate
+### Phase 1 — detection only
+```powershell
 python main.py
 ```
 
-### Stopping the system
-
-Press **Ctrl + C** in the terminal. The system will save any pending database
-writes and shut down cleanly.
+Press **Ctrl + C** to stop. The system drains pending DB writes and shuts down cleanly.
 
 ---
 
 ## 8. Reading the dashboard
 
-The Phase 2 dashboard has six panels:
+### Phase 3 dashboard panels
 
 ```
-┌─────────────────┬──────────────────┬──────────────────┐
-│ CAMERA STATUS   │ DETECTION STATS  │ SYSTEM HEALTH    │
-│                 │                  │                  │
-│ Camera IP       │ People: 3        │ CPU: 45% ████░░  │
-│ Status: Connected│ Cars: 2          │ RAM: 4.2 GB      │
-│ RTSP: Active    │ Motorcycles: 0   │ YOLO: GPU        │
-│ Resolution      │ Gender ♂: 2      │                  │
-│ Uptime          │ Gender ♀: 1      │                  │
-├─────────────────┼──────────────────┼──────────────────┤
-│ ACTIVE TRACKS   │ ENTRY/EXIT &     │ AI ANALYSIS      │
-│                 │ OCCUPANCY        │                  │
-│ People:         │ IN:  42          │ Moderate foot    │
-│ ♂ P-0001 →     │ OUT: 39          │ traffic, 2 cars  │
-│ ♀ P-0002 Lobby │ Current: 18      │ parked near gate │
-│ ♂ P-0003 →     │ Today's Peak: 38 │                  │
-│                 │ Average: 21.4    │ Last: 14:25:10   │
-└─────────────────┴──────────────────┴──────────────────┘
-┌─────────────────────────────────────────────────────────┐
-│ RECENT EVENTS                                           │
-│ [14:25:10] ENTRY: P-0041                               │
-│ [14:25:08] AI analyst started                          │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────┬────────────────────────┬──────────────────────┐
+│ CAMERAS              │ ATTENDANCE TODAY        │ SYSTEM HEALTH        │
+│ 10.30.0.161 OK       │ Present: 12             │ CPU: 38% ████░░      │
+│ 640×360 @ 20 FPS     │ Late: 2                 │ RAM: 6.1 GB          │
+│                      │ Absent: 3               │ Device: CPU          │
+├──────────────────────┼────────────────────────┼──────────────────────┤
+│ ACTIVE EMPLOYEES     │ ACTIVE VISITORS         │ AI ANALYSIS          │
+│ EMP-001 Alice  LobbyA│ VIS-0001  Zone B        │ Normal foot traffic, │
+│ EMP-002 Bob    Zone B│ VIS-0002  Canteen        │ 2 employees in lobby │
+│                      │                         │ 14:25 [gemini]       │
+├──────────────────────┼────────────────────────┼──────────────────────┤
+│ DEPARTMENTS          │ CANTEEN                 │ RECENT ALERTS        │
+│ Engineering  8/10    │ Current: 4              │ [WARN] Loitering...  │
+│ HR           3/5     │ Today:  23 visits       │ [INFO] Entry: Alice  │
+└──────────────────────┴────────────────────────┴──────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│ RECENT EVENTS                                                        │
+│ [14:25:10] ENTRY: EMP-001 Alice (Engineering)                       │
+│ [14:24:55] VISITOR: VIS-0002 entered Zone B                         │
+└──────────────────────────────────────────────────────────────────────┘
 ```
-
-**CAMERA STATUS** — Shows whether the camera is connected, the video
-resolution, and how long the system has been running.
-
-**DETECTION STATS** — Live counts of every person and vehicle in the current
-frame, plus the gender breakdown of all currently tracked people.
-
-**SYSTEM HEALTH** — CPU and RAM usage. If the CPU bar turns red, consider
-lowering the camera resolution in config.ini.
-
-**ACTIVE TRACKS** — Each currently visible person with their gender, movement
-direction, and zone. Vehicles are shown below.
-
-**ENTRY/EXIT & OCCUPANCY** — Cumulative counts of people who have entered and
-exited through the virtual line, the current number of people inside, and the
-daily peak.
-
-**AI ANALYSIS** — A one-sentence description of the scene generated by the AI
-every 30 seconds.
 
 ---
 
 ## 9. Where data is saved
 
-### Snapshots (image files)
-
-| Folder | What is saved there |
-|--------|---------------------|
-| `snapshots/people/` | Cropped image of each person, labelled with their track ID |
-| `snapshots/vehicles/` | Cropped image of each vehicle |
-| `snapshots/entry/` | Full frame at the moment someone crosses the entry line |
-| `snapshots/exit/` | Full frame at the moment someone crosses the exit line |
-| `snapshots/gender/` | Cropped person image with their gender label printed on it |
-
-Filenames include the track ID and a timestamp, e.g.:
-`P-0001_entry_20260615_143022.jpg`
-
-### Log files
-
-All logs are in the `logs/` folder. Each file covers a specific topic:
-
-| File | What it records |
-|------|-----------------|
-| `application.log` | Everything the system does |
-| `tracking.log` | When tracks are created and closed |
-| `analytics.log` | Every entry, exit, and zone transition |
-| `gender.log` | Gender classification results |
-| `vehicle.log` | Vehicle detection events |
-| `database.log` | Database write activity |
-| `error.log` | Warnings and errors only |
-
-Logs rotate automatically when they reach 10 MB (up to 5 backup files kept).
-
 ### Database tables
-
-When `DATABASE.enabled = true`, the following tables are written to:
 
 | Table | What it stores |
 |-------|----------------|
-| `cameras` | Camera details (IP, RTSP URL) |
+| `cameras` | Camera details |
 | `sessions` | One row per system run |
-| `tracked_objects` | Position of every track, every few frames |
-| `gender_classifications` | Gender result for each track |
-| `direction_events` | Direction determined for each track |
-| `line_crossings` | Every entry and exit event |
-| `zone_events` | Every zone entry and zone exit |
-| `occupancy_snapshots` | Occupancy numbers every 60 seconds |
+| `tracked_objects` | Position of every track, every 5 frames |
+| `gender_classifications` | Gender result per track |
+| `direction_events` | Movement direction per track |
+| `line_crossings` | Every entry / exit event |
+| `zone_events` | Every zone entry and exit |
+| `occupancy_snapshots` | Occupancy numbers every 60 s |
 | `vehicle_counts` | Vehicle counts per hour |
-| `error_events` | Errors logged to the database |
-| `system_health_snapshots` | CPU/RAM/FPS every 30 seconds |
+| `error_events` | Errors with tracebacks |
+| `system_health_snapshots` | CPU / RAM / FPS every 30 s |
+| `employee_master` | Employee name, department, designation |
+| `employee_face_master` | Enrollment metadata |
+| `face_embeddings` | Stored face vectors for recognition |
+| `recognized_persons` | Every recognition event |
+| `visitor_master` | Visitor profile (first seen, snapshot) |
+| `visitor_tracking` | Visitor location history |
+| `attendance_log` | Daily attendance per employee |
+| `employee_zone_history` | Zone visit history per employee |
+| `canteen_visits` | Canteen entry / exit per person |
+| `movement_history` | Full cross-zone movement log |
+| `department_analytics` | Periodic headcount snapshot per department |
+| `cross_camera_tracking` | Same person tracked across cameras |
+| `smart_alerts` | All fired security alerts |
+| `audit_log` | Immutable event audit trail |
+
+### Snapshot folders
+
+| Folder | Content |
+|--------|---------|
+| `snapshots/people/` | Cropped person image per track |
+| `snapshots/vehicles/` | Cropped vehicle image per track |
+| `snapshots/entry/` | Full frame at entry crossing |
+| `snapshots/exit/` | Full frame at exit crossing |
+| `snapshots/gender/` | Person crop with gender label |
+
+### Log files (`logs/`)
+
+| File | Content |
+|------|---------|
+| `application.log` | All system events |
+| `camera.log` | Connection / reconnection events |
+| `tracking.log` | Track open / close |
+| `analytics.log` | Entry / exit / zone transitions |
+| `database.log` | DB write activity |
+| `gender.log` | Classification results |
+| `vehicle.log` | Vehicle events |
+| `recognition.log` | Face recognition results |
+| `attendance.log` | Clock-in / clock-out records |
+| `alerts.log` | Fired smart alerts |
+| `error.log` | Warnings and errors |
 
 ---
 
-## 10. Setting up the database
+## 10. Enrolling employees (Phase 3)
 
-### Step 1 — Create the PostgreSQL database
+Before face recognition works, you must enrol each employee's face photos.
 
-```sql
--- Run this in psql or pgAdmin:
-CREATE USER cctv_user WITH PASSWORD 'cctv_pass';
-CREATE DATABASE cctv_analytics OWNER cctv_user;
+### Using the CLI
+
+```powershell
+.\.venv\Scripts\activate
+python enrollment_cli.py
 ```
 
-### Step 2 — Create the tables
+The CLI will prompt you for:
+- Employee ID (e.g. `EMP-001`)
+- Employee name
+- Department
+- Designation
+- Path to a folder of face photos (JPEG / PNG, front-facing, clear lighting)
 
-```
-psql -U cctv_user -d cctv_analytics -f sql/schema.sql
-```
+At least 3–5 photos per person improve accuracy. The face embeddings are stored in the `face_embeddings` table and loaded into memory at startup.
 
-This is safe to run multiple times — it uses `CREATE TABLE IF NOT EXISTS` so
-it will never delete existing data.
+### After enrolment
 
-### Step 3 — Enable the database in config.ini
-
-```ini
-[DATABASE]
-enabled = true
-host = localhost
-port = 5432
-dbname = cctv_analytics
-user = cctv_user
-password = cctv_pass
-```
-
-For security, you can store the password as an environment variable instead:
-```
-set CCTV_DB_PASSWORD=cctv_pass
-```
-Then leave `password =` empty in config.ini — the system will read the
-environment variable automatically.
+Restart `phase3_main.py`. It loads all embeddings from the DB at startup (step 19 in the boot sequence).
 
 ---
 
 ## 11. Running the tests
 
-Unit tests run without a camera, database, or GPU:
-
-```
-venv\Scripts\activate
+Unit tests (no camera / DB / GPU needed):
+```powershell
+.\.venv\Scripts\activate
 pytest tests/unit/ -v
 ```
 
-Integration tests for the database (requires PostgreSQL running):
-```
-set CCTV_TEST_PASSWORD=cctv_pass
-pytest tests/integration/test_db_manager.py -v
-```
-
-Full pipeline integration tests (no camera needed):
-```
-pytest tests/integration/test_full_pipeline.py -v
+Integration tests (requires PostgreSQL running with `cctv_analytics` DB):
+```powershell
+$env:CCTV_TEST_PASSWORD = "Nepal@123"
+pytest tests/integration/ -v
 ```
 
-Run all tests at once:
-```
+Run everything:
+```powershell
 pytest tests/ -v
 ```
 
@@ -563,45 +497,36 @@ pytest tests/ -v
 
 ## 12. Troubleshooting
 
-### "Camera verification failed"
+### Camera verification failed
+- Confirm the RTSP URL works in VLC (Media → Open Network Stream).
+- Check camera IP, username, and password in `config.ini`.
+- Ping the camera: `ping 10.30.0.161`.
 
-- Check the camera IP in `config.ini` is correct.
-- Make sure the camera and computer are on the same network.
-- Try pasting the RTSP URL into VLC (Media → Open Network Stream) to
-  confirm it works.
-
-### "YOLO model could not be loaded"
-
-- Run `pip install ultralytics --upgrade`.
-- If using GPU, make sure the CUDA version matches your GPU driver.
-  Run `nvidia-smi` to check your CUDA version.
-
-### Gender classification not working
-
-- Run `pip install deepface --upgrade`.
-- The first run downloads ~300 MB of models — wait for it to complete.
-- If DeepFace fails, try `backend = insightface` in config.ini and run
-  `pip install insightface onnxruntime`.
+### YOLO model not found
+- Run: `python -c "from ultralytics import YOLO; YOLO('yolo11n.pt')"` then move the downloaded `.pt` file to `models/`.
 
 ### Database connection failed
+- Check PostgreSQL is running: Win + R → `services.msc` → find `postgresql-x64-15`.
+- Test connection: `psql -h localhost -U cctv_user -d cctv_analytics`
+- Verify credentials in `config.ini` match what was set during DB creation.
 
-- Check PostgreSQL is running: open Services (Win + R → `services.msc`) and
-  find `postgresql-x64-xx`.
-- Verify the username/password/database name in config.ini.
-- Make sure PostgreSQL is listening on the configured port (default 5432).
+### Face recognition not working
+- Ensure employees are enrolled via `enrollment_cli.py`.
+- Check `recognition.log` for error details.
+- `min_confidence` in `[FACE_RECOGNITION]` controls sensitivity (lower = more matches but less accurate).
 
-### System using too much CPU
+### Gender classification slow
+- Increase `max_workers` in `[GENDER]` section.
+- Switch to InsightFace backend (`backend = insightface`) — faster but requires an ONNX model download.
 
-- In `config.ini`, lower the model: `model = models/yolo11n.pt` (the `n`
-  variant is the fastest).
-- Reduce the camera resolution by changing the RTSP subtype in the URL
-  (subtype=1 for sub-stream instead of main stream).
-- Enable GPU acceleration by installing the CUDA torch packages.
+### High CPU usage
+- Use sub-stream RTSP URL (`subtype=1` instead of `subtype=0`) for lower resolution.
+- Install GPU support (CUDA torch packages).
+- Set `device = cpu` in `[YOLO]` if GPU detection is failing.
 
-### Dashboard not refreshing
-
-- Increase `dashboard_refresh_rate` in config.ini (e.g. `0.5` = twice per
-  second, `1.0` = once per second).
+### Dashboard looks garbled
+- Use **Windows Terminal** or PowerShell — avoid legacy `cmd.exe`.
+- Set terminal font to Consolas 12pt or any Nerd Font.
 
 ---
 
@@ -610,59 +535,393 @@ pytest tests/ -v
 ```
 START
   │
-  ├─ Read config.ini
-  ├─ Verify camera (pre-flight check)
-  ├─ Load YOLO model (ByteTrack)
-  ├─ Start database connection (if enabled)
-  ├─ Start RTSP video capture
+  ├─ Load config.ini
+  ├─ Verify camera (pre-flight)
+  ├─ Load ByteTrack + YOLO model
+  ├─ Connect to PostgreSQL (if enabled)
+  ├─ Load face embeddings from DB
+  ├─ Start RTSP capture
   ├─ Start dashboard
   │
-  └─ MAIN LOOP ──────────────────────────────────────────────┐
-       │                                                      │
-       ├─ Grab one video frame from camera                    │
-       │                                                      │
-       ├─ Run ByteTrack → get list of tracked people/vehicles │
-       │     Each has: ID (P-0001), bounding box, confidence  │
-       │                                                      │
-       ├─ For each PERSON:                                     │
-       │   ├─ Classify gender (once per person, cached)       │
-       │   ├─ Update movement direction history               │
-       │   ├─ Check if person crossed the counting line       │
-       │   │   └─ If yes: update occupancy (IN or OUT)        │
-       │   │             save entry/exit snapshot             │
-       │   │             write crossing to database           │
-       │   └─ Check which zone person is in                   │
-       │       └─ If zone changed: write zone event to DB     │
-       │                                                      │
-       ├─ For each VEHICLE:                                    │
-       │   ├─ Update direction history                        │
-       │   └─ Increment per-type counter                      │
-       │                                                      │
-       ├─ Every 60 seconds: save occupancy snapshot to DB     │
-       ├─ Every 30 seconds: save system health snapshot to DB │
-       ├─ Every 30 seconds: send AI scene summary             │
-       │                                                      │
-       ├─ Update dashboard with latest numbers                │
-       │                                                      │
-       └─ Repeat ─────────────────────────────────────────────┘
+  └─ MAIN LOOP ─────────────────────────────────────────────────────┐
+       │                                                             │
+       ├─ Read video frame from camera                               │
+       ├─ ByteTrack → tracked persons + vehicles                    │
+       │                                                             │
+       ├─ For each PERSON:                                            │
+       │   ├─ Gender classification (cached per track)              │
+       │   ├─ Face recognition → employee or visitor                │
+       │   │   ├─ Employee → record attendance / canteen / dept     │
+       │   │   └─ Visitor  → create/update visitor record           │
+       │   ├─ Direction detection                                    │
+       │   ├─ Line crossing → occupancy IN/OUT                      │
+       │   ├─ Zone detection → zone enter/exit events               │
+       │   └─ Smart alerts (restricted zone, after-hours, loitering)│
+       │                                                             │
+       ├─ For each VEHICLE:                                           │
+       │   ├─ Direction detection                                    │
+       │   └─ Per-type count update                                  │
+       │                                                             │
+       ├─ Every 60 s → occupancy snapshot to DB                     │
+       ├─ Every 30 s → system health snapshot to DB                 │
+       ├─ Every 30 s → AI scene analysis                            │
+       │                                                             │
+       ├─ Update Phase 3 dashboard                                   │
+       └─ Repeat ────────────────────────────────────────────────────┘
   │
-  ├─ Ctrl+C pressed
-  ├─ Close database session
-  ├─ Drain pending DB writes
+  ├─ Ctrl+C
+  ├─ Drain DB write queue
+  ├─ Close DB session
   └─ STOP
 ```
 
 ---
 
-## Phase 3 (coming next)
-
-Phase 3 will add:
-- Named employee face recognition ("Alice entered at 09:02")
-- Cross-camera re-identification (track the same person across cameras)
-- Canteen attendance analysis
-- Visitor management with entry logs
-- Enterprise reporting dashboard
+*Built on: Python 3.13 · YOLOv11 (ultralytics) · ByteTrack · DeepFace · InsightFace · Rich · psycopg2 · PostgreSQL 15*
 
 ---
 
-*Built on: Python 3.13 · ultralytics (ByteTrack + YOLO) · DeepFace · Rich · psycopg2 · OpenRouter AI*
+## 14. Feature Traceability — CLI → UI → API → DB
+
+This section maps every panel in `phase3_dashboard.py` (the terminal CLI dashboard) to its equivalent Web UI page, REST API endpoint, and PostgreSQL table so you can trace any feature end-to-end.
+
+### Legend
+
+| Symbol | Meaning |
+|--------|---------|
+| ✅ | Fully implemented |
+| ⚠️ | Partially implemented / mock data only |
+| ❌ | Not yet implemented |
+
+---
+
+### 14.1 SYSTEM STATUS panel — `_system_panel()`
+
+**What the CLI shows:** Camera IP · connection status · live FPS · frame counter · uptime · RAM · CPU % · DB online/offline · error count
+
+| Layer | Location | Detail | Status |
+|-------|----------|--------|--------|
+| **CLI function** | `phase3_dashboard.py` → `_system_panel()` | Reads `phase3_state.Phase3State` fields: `actual_fps`, `frame_number`, `cpu_pct`, `ram_gb`, `db_available`, `error_count`, camera list via `set_cameras()` | — |
+| **UI page** | `evap/frontend/src/pages/Dashboard.jsx` | `getMockCameras()` — currently **mock data**; `system_health` card renders CPU/RAM | ⚠️ |
+| **UI component** | `evap/frontend/src/components/Dashboard/StatsCard.jsx` | Health stats card | ⚠️ |
+| **API endpoint** | `GET /api/v1/dashboard/system-health` | Returns CPU %, RAM, FPS, uptime | ✅ |
+| **API endpoint** | `GET /api/v1/dashboard/cameras-status` | Returns per-camera IP, status, FPS | ✅ |
+| **DB tables** | `cctv_analytics.system_health_snapshots` | CPU, RAM, FPS written every 30 s by `db_writer.py` | ✅ |
+| **DB tables** | `cctv_analytics.cameras`, `cctv_analytics.sessions` | Camera and session records | ✅ |
+
+> **Gap:** Dashboard.jsx still calls `getMockCameras()`. Wire `GET /api/v1/dashboard/cameras-status` to replace mock.
+
+---
+
+### 14.2 PEOPLE OVERVIEW panel — `_people_panel()`
+
+**What the CLI shows:** Live employee count · visitor count · male/female split for each · total occupancy
+
+| Layer | Location | Detail | Status |
+|-------|----------|--------|--------|
+| **CLI function** | `phase3_dashboard.py` → `_people_panel()` | Reads `employees_present`, `visitors_present`, `male_employees`, `female_employees`, `male_visitors`, `female_visitors` from `phase3_state` | — |
+| **UI page** | `evap/frontend/src/pages/Dashboard.jsx` | `getMockStats()` — currently **mock data** for people count | ⚠️ |
+| **UI component** | `evap/frontend/src/components/Dashboard/StatsCard.jsx` | Occupancy / people count cards | ⚠️ |
+| **API endpoint** | `GET /api/v1/dashboard/stats` | Returns live employee count, visitor count, gender breakdown, total occupancy | ✅ |
+| **API endpoint** | `GET /api/v1/analytics/occupancy` | Time-series occupancy data | ✅ |
+| **DB tables** | `cctv_analytics.occupancy_snapshots` | Occupancy written every 60 s | ✅ |
+| **DB tables** | `cctv_analytics.recognized_persons` | Source of employee vs visitor split | ✅ |
+| **DB tables** | `cctv_analytics.gender_classifications` | Male/female counts | ✅ |
+
+> **Gap:** Dashboard.jsx uses `getMockStats()`. Replace with `GET /api/v1/dashboard/stats`.
+
+---
+
+### 14.3 ATTENDANCE TODAY panel — `_attendance_panel()`
+
+**What the CLI shows:** Present count · Late count · Absent count · progress bars per category
+
+| Layer | Location | Detail | Status |
+|-------|----------|--------|--------|
+| **CLI function** | `phase3_dashboard.py` → `_attendance_panel()` | Reads `present_today`, `late_today`, `absent_today` from `phase3_state` | — |
+| **UI page** | `evap/frontend/src/pages/Attendance.jsx` | `load()` fetches real data; `SummaryCard` shows Present/Late/Absent | ✅ |
+| **UI component** | `evap/frontend/src/components/Dashboard/StatsCard.jsx` | Summary cards on dashboard | ⚠️ (mock on dashboard) |
+| **API endpoint** | `GET /api/v1/attendance/today` | Returns today's present / late / absent counts | ✅ |
+| **API endpoint** | `GET /api/v1/attendance` | Full attendance log with filters | ✅ |
+| **API endpoint** | `GET /api/v1/attendance/monthly-report` | Monthly attendance export | ✅ |
+| **API endpoint** | `GET /api/v1/attendance/exceptions` | Late arrivals and absences | ✅ |
+| **API endpoint** | `POST /api/v1/attendance/manual-correction` | HR manual override | ✅ |
+| **DB table** | `cctv_analytics.attendance_log` | `employee_id`, `attendance_date`, `first_entry`, `last_exit`, `status`, `is_late` | ✅ |
+
+---
+
+### 14.4 ACTIVE EMPLOYEES panel — `_active_employees_panel()`
+
+**What the CLI shows:** Table of currently-visible employees — EMP_ID · Name · Department · Zone · Entry time (up to 8 rows)
+
+| Layer | Location | Detail | Status |
+|-------|----------|--------|--------|
+| **CLI function** | `phase3_dashboard.py` → `_active_employees_panel()` | Reads `active_employees` list of `EmployeeSummary` objects from `phase3_state` | — |
+| **UI page** | `evap/frontend/src/pages/Employees.jsx` | `load()` calls API; lists all employees with CRUD + face enrol | ✅ |
+| **API endpoint** | `GET /api/v1/employees` | Paginated employee list | ✅ |
+| **API endpoint** | `GET /api/v1/employees/search` | Search by name / dept | ✅ |
+| **API endpoint** | `GET /api/v1/employees/{id}` | Single employee detail | ✅ |
+| **API endpoint** | `GET /api/v1/employees/{id}/movement` | Live zone / movement history | ✅ |
+| **API endpoint** | `GET /api/v1/employees/{id}/zone-history` | Historical zone dwell times | ✅ |
+| **API endpoint** | `POST /api/v1/employees/{id}/enroll-face` | Upload face photos for recognition | ✅ |
+| **API endpoint** | `PUT /api/v1/employees/{id}` | Update employee record | ✅ |
+| **API endpoint** | `DELETE /api/v1/employees/{id}` | Deactivate employee | ✅ |
+| **DB tables** | `cctv_analytics.employee_master` | Name, dept, designation, status | ✅ |
+| **DB tables** | `cctv_analytics.employee_zone_history` | Per-employee zone visits | ✅ |
+| **DB tables** | `cctv_analytics.face_embeddings` | Face vectors for recognition | ✅ |
+| **DB tables** | `cctv_analytics.recognized_persons` | Recognition events per frame | ✅ |
+
+> **Gap:** Employees.jsx shows full employee list but **not live/active-right-now** view. A real-time "who is on camera now" widget is missing in the UI.
+
+---
+
+### 14.5 ACTIVE VISITORS panel — `_active_visitors_panel()`
+
+**What the CLI shows:** Table of current visitors — Visitor-ID · Zone · First Seen · Duration (up to 6 rows)
+
+| Layer | Location | Detail | Status |
+|-------|----------|--------|--------|
+| **CLI function** | `phase3_dashboard.py` → `_active_visitors_panel()` | Reads `active_visitors` list of `VisitorSummaryP3` from `phase3_state` | — |
+| **UI page** | `evap/frontend/src/pages/Visitors.jsx` | `load()` + `active_visitors` endpoint; shows visitor list, detail modal, watchlist | ✅ |
+| **API endpoint** | `GET /api/v1/visitors/active` | Currently-present visitors | ✅ |
+| **API endpoint** | `GET /api/v1/visitors` | Full visitor log | ✅ |
+| **API endpoint** | `GET /api/v1/visitors/{id}` | Visitor profile + snapshot | ✅ |
+| **API endpoint** | `GET /api/v1/visitors/{id}/journey` | Zone-by-zone movement journey | ✅ |
+| **API endpoint** | `POST /api/v1/visitors/{id}/watchlist` | Flag visitor on watchlist | ✅ |
+| **DB tables** | `cctv_analytics.visitor_master` | Visitor ID, first/last seen, snapshot path | ✅ |
+| **DB tables** | `cctv_analytics.visitor_tracking` | Per-visitor zone entry/exit | ✅ |
+| **DB tables** | `cctv_analytics.movement_history` | Full cross-zone movement log | ✅ |
+
+---
+
+### 14.6 CANTEEN panel — `_canteen_panel()`
+
+**What the CLI shows:** Current occupancy in the canteen zone · total visits today
+
+| Layer | Location | Detail | Status |
+|-------|----------|--------|--------|
+| **CLI function** | `phase3_dashboard.py` → `_canteen_panel()` | Reads `canteen_current`, `canteen_today_visits` from `phase3_state` | — |
+| **UI page** | — | **No canteen page exists in UI** | ❌ |
+| **UI component** | — | **No canteen widget on Dashboard** | ❌ |
+| **API endpoint** | — | **No `/api/v1/canteen` endpoint exists** | ❌ |
+| **DB table** | `cctv_analytics.canteen_visits` | `person_id`, `person_type`, `entry_time`, `exit_time`, `meal_period`, `visit_date` — table exists, written by `phase3_main.py` | ✅ |
+
+> **Action required:** Create `GET /api/v1/canteen/stats` API endpoint and a Canteen widget in Dashboard.jsx to surface canteen data from the DB.
+
+---
+
+### 14.7 DEPARTMENT STATUS panel — `_department_panel()`
+
+**What the CLI shows:** Department · Present count · In Office · In Canteen (up to 8 departments)
+
+| Layer | Location | Detail | Status |
+|-------|----------|--------|--------|
+| **CLI function** | `phase3_dashboard.py` → `_department_panel()` | Reads `department_summaries` list of `DeptSummaryEntry` from `phase3_state` | — |
+| **UI page** | `evap/frontend/src/pages/Dashboard.jsx` | `generateMockDept()` — **mock data only** | ⚠️ |
+| **API endpoint** | `GET /api/v1/analytics/daily` | Includes department breakdown | ⚠️ |
+| **API endpoint** | `GET /api/v1/attendance/department/{dept_id}` | Per-department attendance | ✅ |
+| **DB table** | `cctv_analytics.department_analytics` | `department`, `snapshot_time`, `employees_present`, `in_office`, `in_canteen` | ✅ |
+
+> **Gap:** No dedicated `GET /api/v1/analytics/departments` endpoint. Dashboard.jsx still uses `generateMockDept()`.
+
+---
+
+### 14.8 SMART ALERTS panel — `_alerts_panel()`
+
+**What the CLI shows:** Last 5 alerts with severity colour · timestamp · message (restricted zone / after-hours / loitering / crowd)
+
+| Layer | Location | Detail | Status |
+|-------|----------|--------|--------|
+| **CLI function** | `phase3_dashboard.py` → `_alerts_panel()` | Reads `recent_alerts` from `phase3_state`; parses `Alert` objects or plain strings | — |
+| **UI page** | `evap/frontend/src/pages/Alerts.jsx` | `load()`, `acknowledge()`, `acknowledgeAll()` — fully wired to API | ✅ |
+| **UI component** | `evap/frontend/src/components/Dashboard/AlertsPanel.jsx` | Mini alerts panel on dashboard | ✅ |
+| **API endpoint** | `GET /api/v1/alerts` | Full alert list with filters | ✅ |
+| **API endpoint** | `GET /api/v1/alerts/active` | Unacknowledged alerts only | ✅ |
+| **API endpoint** | `GET /api/v1/alerts/stats` | Counts by severity/type | ✅ |
+| **API endpoint** | `GET /api/v1/dashboard/recent-alerts` | Last N alerts for dashboard widget | ✅ |
+| **API endpoint** | `PUT /api/v1/alerts/{id}/acknowledge` | Mark alert as acknowledged | ✅ |
+| **API endpoint** | `DELETE /api/v1/alerts/{id}` | Delete alert | ✅ |
+| **API endpoint** | `POST /api/v1/alerts/rules` | Create alert rule | ✅ |
+| **API endpoint** | `GET /api/v1/alerts/rules` | List alert rules | ✅ |
+| **DB table** | `cctv_analytics.smart_alerts` | `alert_type`, `person_id`, `camera_id`, `zone_id`, `severity`, `message`, `acknowledged` | ✅ |
+
+---
+
+### 14.9 AI ANALYSIS panel — `_ai_panel()`
+
+**What the CLI shows:** One-sentence AI scene description · provider name · timestamp of last analysis
+
+| Layer | Location | Detail | Status |
+|-------|----------|--------|--------|
+| **CLI function** | `phase3_dashboard.py` → `_ai_panel()` | Reads `ai_text`, `ai_timestamp` from `phase3_state`; populated by `AiAnalyst` thread | — |
+| **UI page** | `evap/frontend/src/pages/Dashboard.jsx` | AI text shown as a mock static string | ⚠️ |
+| **API endpoint** | `GET /api/v1/dashboard/stats` | Includes latest AI insight in response | ⚠️ |
+| **DB table** | — | AI insights are **not persisted** — in-memory only in `AiAnalyst` | ❌ |
+
+> **Gap:** AI analysis text is never written to the database. Consider adding an `ai_insights` table and persisting each cycle's result. The UI should poll `GET /api/v1/dashboard/stats` instead of showing a mock string.
+
+---
+
+### 14.10 MOVEMENT LOG panel — `_log_panel()`
+
+**What the CLI shows:** Last 8 movement events (line-IN / line-OUT / ENTRY / EXIT) as plain text strings
+
+| Layer | Location | Detail | Status |
+|-------|----------|--------|--------|
+| **CLI function** | `phase3_dashboard.py` → `_log_panel()` | Reads `log_tail` deque from `phase3_state` (max 200 entries) | — |
+| **UI page** | — | **No dedicated movement log page in UI** | ❌ |
+| **UI component** | — | No live event feed component exists | ❌ |
+| **API endpoint** | `GET /api/v1/employees/{id}/movement` | Movement for one employee | ⚠️ |
+| **API endpoint** | `GET /api/v1/analytics/cross-camera` | Cross-camera journey | ✅ |
+| **DB tables** | `cctv_analytics.movement_history` | Full cross-zone movement log | ✅ |
+| **DB tables** | `cctv_analytics.line_crossings` | Entry/exit line-crossing events | ✅ |
+| **DB tables** | `cctv_analytics.zone_events` | Zone enter/exit events | ✅ |
+
+> **Action required:** Add a live event feed WebSocket endpoint (`WS /api/v1/dashboard/realtime` already exists in dashboard.py) and a real-time event ticker component in Dashboard.jsx.
+
+---
+
+### 14.11 CAMERA LIST — `set_cameras()` / `print_preflight_p3()`
+
+**What the CLI shows:** Pre-flight verification table at startup; live camera IP · status · FPS in the System Status panel
+
+| Layer | Location | Detail | Status |
+|-------|----------|--------|--------|
+| **CLI function** | `phase3_dashboard.py` → `set_cameras()`, `print_preflight_p3()` | Startup-only; sets `_CAMERAS` module variable | — |
+| **UI page** | `evap/frontend/src/pages/Cameras.jsx` | `load()`, `handleSave()`, `handleDelete()`, `handleRestart()` — full CRUD | ✅ |
+| **API endpoint** | `GET /api/v1/cameras` | Camera list | ✅ |
+| **API endpoint** | `GET /api/v1/dashboard/cameras-status` | Live camera health per camera | ✅ |
+| **DB table** | `evap` DB → `cameras` table (evap SQLAlchemy model) | Camera master in EVAP DB | ✅ |
+| **DB table** | `cctv_analytics.cameras` | Camera record written by phase3_main.py | ✅ |
+
+---
+
+### 14.12 Summary — Implementation Status
+
+| CLI Panel | UI Page | UI Status | API Status | DB Status |
+|-----------|---------|-----------|------------|-----------|
+| SYSTEM STATUS | Dashboard.jsx | ⚠️ Mock data | ✅ `/dashboard/system-health` | ✅ `system_health_snapshots` |
+| PEOPLE OVERVIEW | Dashboard.jsx | ⚠️ Mock data | ✅ `/dashboard/stats` | ✅ `occupancy_snapshots` |
+| ATTENDANCE TODAY | Attendance.jsx | ✅ Live data | ✅ `/attendance/today` | ✅ `attendance_log` |
+| ACTIVE EMPLOYEES | Employees.jsx | ⚠️ List only, no live zone | ✅ `/employees` + `/movement` | ✅ `employee_master` |
+| ACTIVE VISITORS | Visitors.jsx | ✅ Live data | ✅ `/visitors/active` | ✅ `visitor_master` |
+| CANTEEN | — | ❌ Missing | ❌ Missing | ✅ `canteen_visits` |
+| DEPARTMENT STATUS | Dashboard.jsx | ⚠️ Mock data | ⚠️ Partial via `/attendance/department` | ✅ `department_analytics` |
+| SMART ALERTS | Alerts.jsx | ✅ Live data | ✅ `/alerts` + `/alerts/active` | ✅ `smart_alerts` |
+| AI ANALYSIS | Dashboard.jsx | ⚠️ Mock string | ⚠️ In `/dashboard/stats` | ❌ Not persisted |
+| MOVEMENT LOG | — | ❌ Missing | ⚠️ Partial via `/employees/{id}/movement` | ✅ `movement_history` |
+| CAMERA STATUS | Cameras.jsx | ✅ Live data | ✅ `/cameras` + `/cameras-status` | ✅ `cameras` |
+
+---
+
+### 14.13 Data Flow Architecture
+
+```
+CAMERA (RTSP)
+    │
+    ▼
+phase3_main.py  ──writes──►  cctv_analytics (PostgreSQL)
+    │                              │
+    │ updates                      │ reads
+    ▼                              ▼
+phase3_state.py           evap/backend (FastAPI)
+    │                        /api/v1/*
+    │ renders                      │
+    ▼                              │ serves
+phase3_dashboard.py (CLI)          ▼
+  Terminal Rich UI          evap/frontend (React)
+                              http://localhost:3000
+```
+
+**Two separate UIs exist for the same data:**
+- `phase3_dashboard.py` — terminal CLI, reads `phase3_state` in real-time (zero latency)
+- `evap/frontend` — web browser UI, reads `cctv_analytics` via FastAPI REST API
+
+---
+
+## 15. Running the Full UI Application
+
+The web UI requires three services running simultaneously: **PostgreSQL** (already set up), **FastAPI backend**, and **React frontend**.
+
+### Step 1 — Create the EVAP web database (run once)
+
+Open PowerShell and run as **postgres superuser**:
+
+```powershell
+$env:PGPASSWORD = "Nepal@123"
+$psql = "C:\Program Files\PostgreSQL\15\bin\psql.exe"
+
+# Create user and database for the web API
+& $psql -h localhost -U postgres -c "CREATE ROLE evap LOGIN PASSWORD 'Nepal@123';"
+& $psql -h localhost -U postgres -c "CREATE DATABASE evap OWNER evap;"
+& $psql -h localhost -U postgres -d evap -c "CREATE EXTENSION IF NOT EXISTS uuid-ossp; CREATE EXTENSION IF NOT EXISTS pgcrypto;"
+& $psql -h localhost -U postgres -d evap -c "GRANT USAGE ON SCHEMA public TO evap; ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO evap; ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO evap;"
+
+# Run EVAP schema migrations
+& $psql -h localhost -U evap -d evap -f "evap\sql\001_schema.sql"
+& $psql -h localhost -U evap -d evap -f "evap\sql\002_indexes.sql"
+& $psql -h localhost -U evap -d evap -f "evap\sql\003_seed_data.sql"
+```
+
+### Step 2 — Start the FastAPI backend
+
+Open a **new PowerShell window** in `c:\Users\user\Downloads\cctv_phase1`:
+
+```powershell
+$env:PYTHONPATH = "c:\Users\user\Downloads\cctv_phase1\evap\backend"
+& "c:\Users\user\Downloads\cctv_phase1\.venv\Scripts\uvicorn.exe" `
+    app.main:app `
+    --host 0.0.0.0 `
+    --port 8000 `
+    --reload `
+    --app-dir "c:\Users\user\Downloads\cctv_phase1\evap\backend"
+```
+
+Verify it's running:
+- Swagger UI → http://localhost:8000/docs
+- Health check → http://localhost:8000/health
+- ReDoc → http://localhost:8000/redoc
+
+### Step 3 — Start the React frontend
+
+Open another **new PowerShell window**:
+
+```powershell
+cd "c:\Users\user\Downloads\cctv_phase1\evap\frontend"
+npm start
+```
+
+The browser will open automatically at **http://localhost:3000**
+
+### Step 4 — (Optional) Run the CCTV analytics engine simultaneously
+
+In a **third PowerShell window** (for live data):
+
+```powershell
+cd "c:\Users\user\Downloads\cctv_phase1"
+.\.venv\Scripts\python.exe phase3_main.py
+```
+
+This writes live data into `cctv_analytics` which the API serves to the frontend.
+
+### All services at a glance
+
+| Service | Command | URL |
+|---------|---------|-----|
+| FastAPI backend | `uvicorn app.main:app --port 8000` | http://localhost:8000/docs |
+| React frontend | `npm start` (in evap/frontend) | http://localhost:3000 |
+| CCTV analytics engine | `python phase3_main.py` | Terminal dashboard |
+| pgAdmin (DB GUI) | Open pgAdmin app | localhost:5050 |
+
+### Default login (after seed data runs)
+
+| Field | Value |
+|-------|-------|
+| Username | `admin` |
+| Password | `admin123` |
+
+> Change these immediately after first login via the Settings page.
+
+---
+
+*Built on: Python 3.13 · YOLOv11 (ultralytics) · ByteTrack · DeepFace · InsightFace · Rich · psycopg2 · PostgreSQL 15 · FastAPI · React 18 · Bootstrap 5*

@@ -1,6 +1,13 @@
 -- =============================================================================
 -- schema_p3.sql  –  CCTV Phase 3 PostgreSQL DDL
 -- All tables use CREATE TABLE IF NOT EXISTS; all indexes use IF NOT EXISTS.
+--
+-- PREREQUISITES: Run schema.sql first (Phase 2 tables must exist).
+--
+-- Run this file:
+--   psql -h localhost -U cctv_user -d cctv_analytics -f sql/schema_p3.sql
+--
+-- For a full one-step setup, use sql/000_setup.sql instead.
 -- =============================================================================
 
 -- ---------------------------------------------------------------------------

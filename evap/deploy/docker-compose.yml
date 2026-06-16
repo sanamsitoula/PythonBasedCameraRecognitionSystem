@@ -1,0 +1,298 @@
+# ==============================================================================
+# EVAP – Enterprise Video Analytics Platform
+# Development Docker Compose
+# ==============================================================================
+
+version: "3.9"
+
+x-backend-env: &backend-env
+  env_file: ../.env
+  environment:
+    - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://evap:evap_password@postgres:5432/evap}
+    - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+    - RABBITMQ_URL=${RABBITMQ_URL:-amqp://evap:evap_password@rabbitmq:5672/}
+    - CELERY_BROKER_URL=${CELERY_BROKER_URL:-amqp://evap:evap_password@rabbitmq:5672/}
+    - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+    - APP_ENV=development
+    - LOG_LEVEL=debug
+
+services:
+  # ----------------------------------------------------------------------------
+  # PostgreSQL 16
+  # ----------------------------------------------------------------------------
+  postgres:
+    image: postgres:16
+    container_name: evap_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-evap}
+      POSTGRES_USER: ${POSTGRES_USER:-evap}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-evap_password}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../backend/sql/001_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+      - ../backend/sql/002_seed.sql:/docker-entrypoint-initdb.d/002_seed.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-evap} -d ${POSTGRES_DB:-evap}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - evap-network
+
+  # ----------------------------------------------------------------------------
+  # Redis 7 Alpine
+  # ----------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: evap_redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - evap-network
+
+  # ----------------------------------------------------------------------------
+  # RabbitMQ 3 with management plugin
+  # ----------------------------------------------------------------------------
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: evap_rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-evap}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-evap_password}
+      RABBITMQ_DEFAULT_VHOST: /
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - evap-network
+
+  # ----------------------------------------------------------------------------
+  # FastAPI Backend
+  # ----------------------------------------------------------------------------
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: evap_backend
+    restart: unless-stopped
+    <<: *backend-env
+    volumes:
+      - snapshots:/app/snapshots
+      - ../backend:/app:delegated
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - evap-network
+
+  # ----------------------------------------------------------------------------
+  # Celery Worker
+  # ----------------------------------------------------------------------------
+  celery-worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: evap_celery_worker
+    restart: unless-stopped
+    command: >
+      celery -A app.workers.celery_app worker
+        --loglevel=info
+        -c 4
+        -Q default,reports,notifications
+        --hostname=worker@%h
+    <<: *backend-env
+    volumes:
+      - snapshots:/app/snapshots
+      - ../backend:/app:delegated
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app inspect ping -d celery@$$HOSTNAME || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
+    networks:
+      - evap-network
+
+  # ----------------------------------------------------------------------------
+  # Celery Beat Scheduler
+  # ----------------------------------------------------------------------------
+  celery-beat:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: evap_celery_beat
+    restart: unless-stopped
+    command: >
+      celery -A app.workers.celery_app beat
+        --loglevel=info
+        --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    <<: *backend-env
+    volumes:
+      - snapshots:/app/snapshots
+      - ../backend:/app:delegated
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - evap-network
+
+  # ----------------------------------------------------------------------------
+  # React Frontend (dev)
+  # ----------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: evap_frontend
+    restart: unless-stopped
+    environment:
+      - REACT_APP_API_URL=${REACT_APP_API_URL:-http://localhost/api}
+      - REACT_APP_WS_URL=${REACT_APP_WS_URL:-ws://localhost/ws}
+      - NODE_ENV=development
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../frontend/src:/app/src:delegated
+      - ../frontend/public:/app/public:delegated
+    depends_on:
+      - backend
+    networks:
+      - evap-network
+
+  # ----------------------------------------------------------------------------
+  # Nginx Reverse Proxy
+  # ----------------------------------------------------------------------------
+  nginx:
+    image: nginx:alpine
+    container_name: evap_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - backend
+      - frontend
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - evap-network
+
+  # ----------------------------------------------------------------------------
+  # Prometheus
+  # ----------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: evap_prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus_alerts.yml:/etc/prometheus/alerts.yml:ro
+    ports:
+      - "9090:9090"
+    networks:
+      - evap-network
+
+  # ----------------------------------------------------------------------------
+  # Grafana
+  # ----------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:latest
+    container_name: evap_grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-evap_grafana_secret}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s:%(http_port)s/grafana/"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - evap-network
+
+networks:
+  evap-network:
+    driver: bridge
+    name: evap-network
+
+volumes:
+  postgres_data:
+    name: evap_postgres_data
+  redis_data:
+    name: evap_redis_data
+  rabbitmq_data:
+    name: evap_rabbitmq_data
+  snapshots:
+    name: evap_snapshots
+  grafana_data:
+    name: evap_grafana_data

@@ -1,0 +1,60 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: evap-config
+  namespace: evap
+  labels:
+    app: evap
+    component: config
+data:
+  API_V1_STR: "/api/v1"
+  PROJECT_NAME: "EVAP – Enterprise Video Analytics Platform"
+  DEBUG: "false"
+  APP_ENV: "production"
+  APP_HOST: "0.0.0.0"
+  APP_PORT: "8000"
+  WORKERS: "4"
+
+  # Prometheus
+  PROMETHEUS_PORT: "8000"
+  PROMETHEUS_METRICS_PATH: "/metrics"
+
+  # Face recognition / detection thresholds
+  MAX_FACE_DISTANCE: "0.6"
+  FACE_DETECTION_CONFIDENCE: "0.85"
+  FACE_RECOGNITION_TOLERANCE: "0.5"
+
+  # Logging
+  LOG_LEVEL: "info"
+  LOG_FORMAT: "json"
+
+  # Paths
+  SNAPSHOTS_DIR: "/app/snapshots"
+
+  # CORS
+  CORS_ORIGINS: "https://evap.yourdomain.com"
+  CORS_ALLOW_CREDENTIALS: "true"
+
+  # Celery
+  CELERY_WORKER_CONCURRENCY: "4"
+  CELERY_TASK_ALWAYS_EAGER: "false"
+  CELERY_TASK_SERIALIZER: "json"
+  CELERY_RESULT_EXPIRES: "3600"
+
+  # Cache TTLs (seconds)
+  CACHE_TTL_DEFAULT: "300"
+  CACHE_TTL_EMPLOYEE: "3600"
+  CACHE_TTL_ATTENDANCE: "60"
+
+  # Feature flags
+  ENABLE_GPU_ACCELERATION: "false"
+  ENABLE_FACE_RECOGNITION: "true"
+  ENABLE_CROWD_ANALYTICS: "true"
+  ENABLE_VEHICLE_TRACKING: "false"
+
+  # Pagination
+  DEFAULT_PAGE_SIZE: "20"
+  MAX_PAGE_SIZE: "100"
+
+  # Timezone
+  TZ: "UTC"
