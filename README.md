@@ -641,14 +641,12 @@ This section maps every panel in `phase3_dashboard.py` (the terminal CLI dashboa
 | Layer | Location | Detail | Status |
 |-------|----------|--------|--------|
 | **CLI function** | `phase3_dashboard.py` → `_system_panel()` | Reads `phase3_state.Phase3State` fields: `actual_fps`, `frame_number`, `cpu_pct`, `ram_gb`, `db_available`, `error_count`, camera list via `set_cameras()` | — |
-| **UI page** | `evap/frontend/src/pages/Dashboard.jsx` | `getMockCameras()` — currently **mock data**; `system_health` card renders CPU/RAM | ⚠️ |
-| **UI component** | `evap/frontend/src/components/Dashboard/StatsCard.jsx` | Health stats card | ⚠️ |
+| **UI page** | `evap/frontend/src/pages/Dashboard.jsx` | `CameraMonitor` component — calls `GET /api/v1/cameras` for live camera list; shows empty state when no cameras registered | ✅ |
+| **UI component** | `evap/frontend/src/components/Dashboard/StatsCard.jsx` | Health stats card | ✅ |
 | **API endpoint** | `GET /api/v1/dashboard/system-health` | Returns CPU %, RAM, FPS, uptime | ✅ |
 | **API endpoint** | `GET /api/v1/dashboard/cameras-status` | Returns per-camera IP, status, FPS | ✅ |
 | **DB tables** | `cctv_analytics.system_health_snapshots` | CPU, RAM, FPS written every 30 s by `db_writer.py` | ✅ |
 | **DB tables** | `cctv_analytics.cameras`, `cctv_analytics.sessions` | Camera and session records | ✅ |
-
-> **Gap:** Dashboard.jsx still calls `getMockCameras()`. Wire `GET /api/v1/dashboard/cameras-status` to replace mock.
 
 ---
 
@@ -659,15 +657,13 @@ This section maps every panel in `phase3_dashboard.py` (the terminal CLI dashboa
 | Layer | Location | Detail | Status |
 |-------|----------|--------|--------|
 | **CLI function** | `phase3_dashboard.py` → `_people_panel()` | Reads `employees_present`, `visitors_present`, `male_employees`, `female_employees`, `male_visitors`, `female_visitors` from `phase3_state` | — |
-| **UI page** | `evap/frontend/src/pages/Dashboard.jsx` | `getMockStats()` — currently **mock data** for people count | ⚠️ |
-| **UI component** | `evap/frontend/src/components/Dashboard/StatsCard.jsx` | Occupancy / people count cards | ⚠️ |
+| **UI page** | `evap/frontend/src/pages/Dashboard.jsx` | Calls `GET /api/v1/dashboard/stats`; shows zero/empty state when no engine data yet | ✅ |
+| **UI component** | `evap/frontend/src/components/Dashboard/StatsCard.jsx` | Occupancy / people count cards | ✅ |
 | **API endpoint** | `GET /api/v1/dashboard/stats` | Returns live employee count, visitor count, gender breakdown, total occupancy | ✅ |
 | **API endpoint** | `GET /api/v1/analytics/occupancy` | Time-series occupancy data | ✅ |
 | **DB tables** | `cctv_analytics.occupancy_snapshots` | Occupancy written every 60 s | ✅ |
 | **DB tables** | `cctv_analytics.recognized_persons` | Source of employee vs visitor split | ✅ |
 | **DB tables** | `cctv_analytics.gender_classifications` | Male/female counts | ✅ |
-
-> **Gap:** Dashboard.jsx uses `getMockStats()`. Replace with `GET /api/v1/dashboard/stats`.
 
 ---
 
@@ -756,12 +752,12 @@ This section maps every panel in `phase3_dashboard.py` (the terminal CLI dashboa
 | Layer | Location | Detail | Status |
 |-------|----------|--------|--------|
 | **CLI function** | `phase3_dashboard.py` → `_department_panel()` | Reads `department_summaries` list of `DeptSummaryEntry` from `phase3_state` | — |
-| **UI page** | `evap/frontend/src/pages/Dashboard.jsx` | `generateMockDept()` — **mock data only** | ⚠️ |
+| **UI page** | `evap/frontend/src/pages/Dashboard.jsx` | Calls `GET /api/v1/dashboard/stats`; shows empty chart when no data yet | ✅ |
 | **API endpoint** | `GET /api/v1/analytics/daily` | Includes department breakdown | ⚠️ |
 | **API endpoint** | `GET /api/v1/attendance/department/{dept_id}` | Per-department attendance | ✅ |
 | **DB table** | `cctv_analytics.department_analytics` | `department`, `snapshot_time`, `employees_present`, `in_office`, `in_canteen` | ✅ |
 
-> **Gap:** No dedicated `GET /api/v1/analytics/departments` endpoint. Dashboard.jsx still uses `generateMockDept()`.
+> **Gap:** No dedicated `GET /api/v1/analytics/departments` endpoint — Dashboard charts show empty until `phase3_main.py` is running and writing to `department_analytics`.
 
 ---
 
@@ -839,17 +835,18 @@ This section maps every panel in `phase3_dashboard.py` (the terminal CLI dashboa
 
 | CLI Panel | UI Page | UI Status | API Status | DB Status |
 |-----------|---------|-----------|------------|-----------|
-| SYSTEM STATUS | Dashboard.jsx | ⚠️ Mock data | ✅ `/dashboard/system-health` | ✅ `system_health_snapshots` |
-| PEOPLE OVERVIEW | Dashboard.jsx | ⚠️ Mock data | ✅ `/dashboard/stats` | ✅ `occupancy_snapshots` |
+| SYSTEM STATUS | Dashboard.jsx | ✅ Live API, empty until engine runs | ✅ `/dashboard/system-health` | ✅ `system_health_snapshots` |
+| PEOPLE OVERVIEW | Dashboard.jsx | ✅ Live API, empty until engine runs | ✅ `/dashboard/stats` | ✅ `occupancy_snapshots` |
 | ATTENDANCE TODAY | Attendance.jsx | ✅ Live data | ✅ `/attendance/today` | ✅ `attendance_log` |
 | ACTIVE EMPLOYEES | Employees.jsx | ⚠️ List only, no live zone | ✅ `/employees` + `/movement` | ✅ `employee_master` |
 | ACTIVE VISITORS | Visitors.jsx | ✅ Live data | ✅ `/visitors/active` | ✅ `visitor_master` |
 | CANTEEN | — | ❌ Missing | ❌ Missing | ✅ `canteen_visits` |
-| DEPARTMENT STATUS | Dashboard.jsx | ⚠️ Mock data | ⚠️ Partial via `/attendance/department` | ✅ `department_analytics` |
+| DEPARTMENT STATUS | Dashboard.jsx | ✅ Live API, empty until engine runs | ⚠️ Partial via `/attendance/department` | ✅ `department_analytics` |
 | SMART ALERTS | Alerts.jsx | ✅ Live data | ✅ `/alerts` + `/alerts/active` | ✅ `smart_alerts` |
-| AI ANALYSIS | Dashboard.jsx | ⚠️ Mock string | ⚠️ In `/dashboard/stats` | ❌ Not persisted |
+| AI ANALYSIS | Dashboard.jsx | ⚠️ In `/dashboard/stats` | ⚠️ In `/dashboard/stats` | ❌ Not persisted |
 | MOVEMENT LOG | — | ❌ Missing | ⚠️ Partial via `/employees/{id}/movement` | ✅ `movement_history` |
-| CAMERA STATUS | Cameras.jsx | ✅ Live data | ✅ `/cameras` + `/cameras-status` | ✅ `cameras` |
+| CAMERA MONITOR | Dashboard.jsx | ✅ Live camera cards + analytics panel | ✅ `/cameras` | ✅ `camera_master` |
+| CAMERA CRUD | Cameras.jsx | ✅ Live data | ✅ `/cameras` + `/cameras/{id}/restart` | ✅ `camera_master` |
 
 ---
 
@@ -962,7 +959,9 @@ Redis (`localhost:6379`) and RabbitMQ (`localhost:5672`) are **not required** to
 
 ### Dependency notes
 
-`passlib` is incompatible with `bcrypt>=4.0.0` (Python 3.13). The backend uses `bcrypt` directly instead of passlib for password hashing. If you see `AttributeError: module 'bcrypt' has no attribute '__about__'`, this fix is already applied — no action needed.
+**bcrypt / passlib:** `passlib` is incompatible with `bcrypt>=4.0.0` on Python 3.13. The backend uses `bcrypt` directly. If you see `AttributeError: module 'bcrypt' has no attribute '__about__'`, the fix is already applied — no action needed.
+
+**react-icons:** This project uses react-icons v5 (Remix Icons). Only icons confirmed to exist in that version are imported. If you see a webpack `export was not found` error for an `Ri*` icon, check the [Remix Icons](https://remixicon.com) catalogue and replace with the closest available name.
 
 ---
 

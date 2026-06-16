@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { camerasAPI, dashboardAPI } from '../../services/api';
 import {
-  RiCameraLine, RiGroupLine, RiManLine, RiWomanLine,
+  RiCameraLine, RiGroupLine,
   RiArrowLeftLine, RiArrowRightLine, RiRefreshLine,
-  RiWifiLine, RiWifiOffLine, RiUserLine,
+  RiWifiLine, RiWifiOffLine,
 } from 'react-icons/ri';
 
 const REFRESH_INTERVAL = 15000; // 15 seconds
@@ -28,8 +28,8 @@ function GenderBar({ male = 0, female = 0 }) {
   return (
     <div>
       <div className="d-flex justify-content-between mb-1" style={{ fontSize: 11, color: '#8b949e' }}>
-        <span><RiManLine size={12} /> Male {malePct}%</span>
-        <span>Female {femalePct}% <RiWomanLine size={12} /></span>
+        <span>♂ Male {malePct}%</span>
+        <span>Female {femalePct}% ♀</span>
       </div>
       <div style={{ height: 6, borderRadius: 3, background: '#21262d', overflow: 'hidden' }}>
         <div style={{
@@ -185,7 +185,6 @@ export default function CameraMonitor() {
 
   async function manualRefresh() {
     await fetchAll();
-    toast && toast.success && null; // silent refresh
   }
 
   const totalPages = Math.ceil(cameras.length / PER_PAGE);

@@ -3,7 +3,6 @@ import { dashboardAPI } from '../services/api';
 import StatsCard from '../components/Dashboard/StatsCard';
 import OccupancyChart from '../components/Dashboard/OccupancyChart';
 import AlertsPanel from '../components/Dashboard/AlertsPanel';
-import CameraGrid from '../components/Dashboard/CameraGrid';
 import CameraMonitor from '../components/Dashboard/CameraMonitor';
 import useWebSocket from '../hooks/useWebSocket';
 import {
@@ -42,27 +41,25 @@ export default function Dashboard() {
 
   const load = useCallback(async () => {
     try {
-      const [statsRes, occRes, camRes, detRes] = await Promise.all([
+      const [statsRes, occRes, detRes] = await Promise.all([
         dashboardAPI.getStats(),
         dashboardAPI.getOccupancyHistory(),
-        dashboardAPI.getStats(),
         dashboardAPI.getRecentDetections(),
       ]);
       setStats(statsRes.data);
-      setOccupancyHistory(occRes.data?.history || generateMockOccupancy());
+      setOccupancyHistory(occRes.data?.history || []);
       setCameras(statsRes.data?.cameras || []);
       setRecentDetections(detRes.data?.detections || []);
-      setDeptData(statsRes.data?.department_attendance || generateMockDept());
-      setVehicleData(statsRes.data?.vehicle_types || generateMockVehicles());
+      setDeptData(statsRes.data?.department_attendance || []);
+      setVehicleData(statsRes.data?.vehicle_types || []);
       setLastRefresh(new Date());
     } catch {
-      // Use mock data on API failure
-      setStats(getMockStats());
-      setOccupancyHistory(generateMockOccupancy());
-      setCameras(getMockCameras());
-      setRecentDetections(getMockDetections());
-      setDeptData(generateMockDept());
-      setVehicleData(generateMockVehicles());
+      setStats(null);
+      setOccupancyHistory([]);
+      setCameras([]);
+      setRecentDetections([]);
+      setDeptData([]);
+      setVehicleData([]);
       setLastRefresh(new Date());
     } finally {
       setLoading(false);
@@ -137,7 +134,6 @@ export default function Dashboard() {
 
       {/* Row 3b: Recent detections */}
       <div className="row g-3 mb-3">
-        <div className="col-12">
         <div className="col-12">
           <div className="card" style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: 10 }}>
             <div className="card-header px-3 py-2" style={{ background: 'transparent', borderBottom: '1px solid #30363d' }}>
@@ -226,65 +222,3 @@ export default function Dashboard() {
   );
 }
 
-// ── Mock data helpers (used when API is unavailable) ──────────────────────────
-
-function getMockStats() {
-  return {
-    people_present: 142, visitors_today: 18, vehicles_present: 34,
-    occupancy_percent: 67, today_entries: 189, active_alerts: 3,
-    cameras: getMockCameras(),
-    department_attendance: generateMockDept(),
-    vehicle_types: generateMockVehicles(),
-  };
-}
-
-function getMockCameras() {
-  return [
-    { id: 1, name: 'Main Entrance', status: 'online', fps: 25, detections: 3 },
-    { id: 2, name: 'Parking A', status: 'online', fps: 20, detections: 1 },
-    { id: 3, name: 'Lobby', status: 'degraded', fps: 12, detections: 0 },
-    { id: 4, name: 'Server Room', status: 'online', fps: 25, detections: 0 },
-    { id: 5, name: 'Cafeteria', status: 'offline', fps: 0, detections: 0 },
-    { id: 6, name: 'Parking B', status: 'online', fps: 22, detections: 2 },
-  ];
-}
-
-function getMockDetections() {
-  return [
-    { type: 'employee', name: 'John Doe', camera_name: 'Main Entrance', timestamp: new Date(Date.now() - 60000).toISOString() },
-    { type: 'visitor', name: 'Unknown Visitor', camera_name: 'Lobby', timestamp: new Date(Date.now() - 180000).toISOString() },
-    { type: 'vehicle', name: 'MH-12-AB-1234', camera_name: 'Parking A', timestamp: new Date(Date.now() - 300000).toISOString() },
-  ];
-}
-
-function generateMockOccupancy() {
-  const now = new Date();
-  return Array.from({ length: 24 }, (_, i) => {
-    const h = new Date(now.getTime() - (23 - i) * 3600000);
-    const base = Math.sin((i / 24) * Math.PI) * 80 + 20;
-    return {
-      time: h.getHours() + ':00',
-      total: Math.round(base + Math.random() * 20),
-      employees: Math.round(base * 0.7 + Math.random() * 10),
-      visitors: Math.round(base * 0.3 + Math.random() * 10),
-    };
-  });
-}
-
-function generateMockDept() {
-  const depts = ['IT', 'HR', 'Finance', 'Ops', 'Sales', 'R&D'];
-  return depts.map((dept) => ({
-    dept,
-    present: Math.floor(Math.random() * 20 + 10),
-    absent: Math.floor(Math.random() * 5 + 1),
-  }));
-}
-
-function generateMockVehicles() {
-  return [
-    { name: 'Car', value: 24 },
-    { name: 'Bike', value: 8 },
-    { name: 'Truck', value: 2 },
-    { name: 'Other', value: 4 },
-  ];
-}
