@@ -4,6 +4,7 @@ import StatsCard from '../components/Dashboard/StatsCard';
 import OccupancyChart from '../components/Dashboard/OccupancyChart';
 import AlertsPanel from '../components/Dashboard/AlertsPanel';
 import CameraGrid from '../components/Dashboard/CameraGrid';
+import CameraMonitor from '../components/Dashboard/CameraMonitor';
 import useWebSocket from '../hooks/useWebSocket';
 import {
   RiGroupLine, RiUserFollowLine, RiCarLine, RiPercentLine,
@@ -129,13 +130,16 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Row 3: Camera grid + Recent detections */}
+      {/* Row 3: Camera Monitor — live feed + analytics side by side */}
+      <div className="mb-3">
+        <CameraMonitor />
+      </div>
+
+      {/* Row 3b: Recent detections */}
       <div className="row g-3 mb-3">
-        <div className="col-12 col-lg-8">
-          <CameraGrid cameras={cameras} loading={loading} />
-        </div>
-        <div className="col-12 col-lg-4">
-          <div className="card h-100" style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: 10 }}>
+        <div className="col-12">
+        <div className="col-12">
+          <div className="card" style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: 10 }}>
             <div className="card-header px-3 py-2" style={{ background: 'transparent', borderBottom: '1px solid #30363d' }}>
               <span className="fw-semibold text-white" style={{ fontSize: 14 }}>Recent Detections</span>
             </div>
