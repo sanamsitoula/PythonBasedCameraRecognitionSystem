@@ -28,6 +28,5 @@ export default function useWebSocket(handlers = {}, deps = []) {
         wsService.unsubscribe(event, stable);
       });
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  }, deps); // deps is intentionally caller-controlled
 }
