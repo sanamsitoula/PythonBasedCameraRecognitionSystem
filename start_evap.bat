@@ -26,6 +26,10 @@ echo [*] Freeing ports 8000 and 3000...
 for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":8000 "') do taskkill /F /PID %%a >nul 2>&1
 for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":3000 "') do taskkill /F /PID %%a >nul 2>&1
 
+:: Clear Python bytecode cache so stale .pyc files never shadow edited source files
+echo [*] Clearing Python __pycache__ ...
+for /d /r "%ROOT%\evap\backend" %%d in (__pycache__) do if exist "%%d" rd /s /q "%%d"
+
 :: Start FastAPI backend in a new window, log to file
 echo [*] Starting FastAPI backend on http://localhost:8000 ...
 start "EVAP Backend" cmd /c ""%VENV%\uvicorn.exe" app.main:app --host 0.0.0.0 --port 8000 --reload --app-dir "%BACKEND%" >> "%LOGS%\backend.log" 2>&1"

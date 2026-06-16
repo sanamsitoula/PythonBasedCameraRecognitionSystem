@@ -7,16 +7,14 @@
 ╚══════╝  ╚═══╝  ╚═╝  ╚═╝╚═╝
 
   Enterprise Video Analytics Platform
-  Phase 4 — AI-Powered Multi-Camera Intelligence
   ─────────────────────────────────────────────
   Real-time detection · Face recognition · ANPR
-  Behavioral analytics · ERP integration · GIS
+  Employee management · Attendance automation
 ```
 
 [![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![React](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=black)](https://reactjs.org)
-[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://docker.com)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=flat-square&logo=postgresql&logoColor=white)](https://postgresql.org)
 [![Redis](https://img.shields.io/badge/Redis-7.2-DC382D?style=flat-square&logo=redis&logoColor=white)](https://redis.io)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
@@ -25,106 +23,141 @@
 
 ## Project Overview
 
-**EVAP (Enterprise Video Analytics Platform)** is a production-grade, AI-driven video surveillance and analytics system built for large-scale enterprise deployments. It transforms passive CCTV infrastructure into an active intelligence layer — processing live streams from up to 500+ cameras simultaneously, extracting structured data from raw video, and surfacing actionable insights through a real-time web dashboard.
+**EVAP (Enterprise Video Analytics Platform)** is a production-grade, AI-driven video surveillance and analytics system. It transforms passive CCTV infrastructure into an active intelligence layer — processing live RTSP streams, identifying employees via face recognition, automating attendance, and surfacing real-time insights through a React web dashboard.
 
-EVAP is architected around an event-driven pipeline: frames are ingested via RTSP/ONVIF, processed by a GPU-accelerated AI engine (YOLOv11 + ByteTrack + InsightFace), and routed through RabbitMQ to purpose-built Celery workers that handle alerting, ERP synchronization, attendance automation, and report generation. The frontend is a React 18 single-page application with live WebSocket feeds, GIS floor maps, and executive-grade reporting — designed to serve security teams, HR managers, operations directors, and C-suite executives from the same platform.
-
-Key capabilities include automatic number plate recognition (ANPR), cross-camera person re-identification, behavioral heat maps, occupancy analytics, visitor lifecycle management, and bi-directional ERP integration with SAP, Oracle, and custom HR systems.
+The stack is a FastAPI async backend with SQLAlchemy + PostgreSQL, a Celery/RabbitMQ worker layer for async jobs, Redis for caching and WebSocket state, and a React 18 SPA frontend. The AI pipeline (YOLOv11 + ByteTrack + InsightFace) runs as a separate engine and publishes structured events into the backend.
 
 ---
 
-## Key Features
+## Quick Start (Windows)
 
-- **Real-Time Dashboard** — Live camera grid with per-camera detection overlays, occupancy counters, and system health indicators updated via WebSocket every 500 ms.
-- **Floor Map / GIS Analytics** — Interactive Leaflet-based maps with zone polygons, live head-count overlays, and occupancy threshold alerts tied to physical floor plans.
-- **Vehicle Analytics & ANPR** — LPRNet + WPOD-Net automatic number plate recognition with sub-200 ms latency; maintains whitelist/blacklist; syncs entries/exits to ERP.
-- **Visitor Management** — Full visitor lifecycle: pre-registration, QR check-in, face capture, escort assignment, overstay detection, and digital audit trail.
-- **Smart Alerts** — Rule-based and AI-classified alert engine covering intrusion, loitering, crowd formation, object abandonment, and blacklisted-person detection; routed via email, SMS, and push notification.
-- **ERP Integration** — Webhook-based bi-directional sync with SAP S/4HANA, Oracle HCM, and generic REST targets; supports employee roster import and real-time attendance push.
-- **Attendance Automation** — Face-recognition-driven check-in/check-out with shift mapping, overtime flagging, and exportable attendance registers; replaces legacy biometric terminals.
-- **Heat Maps & Behavioral Analytics** — Temporal and spatial density heat maps, dwell-time distributions, path trajectory clustering, and conversion funnel analysis for retail or campus environments.
-- **Multi-Camera Analytics** — Cross-camera person re-identification using InsightFace embeddings, global track stitching across camera handoff zones, and entity timeline reconstruction.
-- **Executive Reporting** — Scheduled and on-demand PDF/Excel reports with KPI scorecards, trend charts, compliance summaries, and camera uptime statistics; delivered via email or S3.
+The easiest way to run EVAP locally on Windows is the included launcher script.
+
+```bat
+:: From the project root
+start_evap.bat
+```
+
+This will:
+1. Clear stale Python `__pycache__` bytecode (prevents 405/500 errors after edits).
+2. Free ports 8000 and 3000 if occupied.
+3. Start the FastAPI backend in a new window on `http://localhost:8000`.
+4. Wait 3 seconds, then start the React frontend on `http://localhost:3000`.
+5. Write logs to `logs\backend.log` and `logs\frontend.log`.
+6. Press any key in the launcher window to stop both services.
+
+**Watch logs live:**
+```powershell
+# Backend
+powershell Get-Content -Wait logs\backend.log
+
+# Frontend
+powershell Get-Content -Wait logs\frontend.log
+```
+
+**Key URLs after startup:**
+
+| URL | Purpose |
+|---|---|
+| `http://localhost:3000` | Web dashboard |
+| `http://localhost:8000/docs` | Interactive API docs (Swagger UI) |
+| `http://localhost:8000/redoc` | ReDoc API reference |
+| `http://localhost:8000/health` | Health check endpoint |
+| `http://localhost:8000/metrics` | Prometheus metrics |
 
 ---
 
-## Architecture Diagram
+## Manual Setup
+
+### Prerequisites
+
+- Python 3.13+
+- Node.js 20+ with npm
+- PostgreSQL 16
+- Redis 7.x
+
+### Backend
+
+```bash
+cd evap/backend
+
+# Create and activate virtual environment
+python -m venv .venv
+.venv\Scripts\activate          # Windows
+source .venv/bin/activate       # Linux/macOS
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Configure environment
+cp .env.example .env
+# Edit .env: set DATABASE_URL, REDIS_URL, SECRET_KEY, etc.
+
+# Run database migrations
+alembic upgrade head
+
+# Start backend (reload mode for development)
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --app-dir .
+```
+
+### Frontend
+
+```bash
+cd evap/frontend
+npm install
+npm start       # development server on http://localhost:3000
+npm run build   # production build → build/
+```
+
+### Face Enrollment (CLI)
+
+```bash
+# Enroll an employee from the command line
+python enrollment_cli.py --employee-id EMP001 --photos-dir ./photos/EMP001/
+
+# Or use the face enrollment module directly
+python face_enrollment.py
+```
+
+---
+
+## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        DATA INGESTION LAYER                             │
-│                                                                         │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐               │
-│  │ Camera 1 │  │ Camera 2 │  │ Camera N │  │  ONVIF   │               │
-│  │  (RTSP)  │  │  (RTSP)  │  │  (RTSP)  │  │ Discovery│               │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘               │
-│       └─────────────┴──────────────┴─────────────┘                     │
-│                              │ FFmpeg Frame Decode                      │
-│                              ▼                                          │
-│                    ┌─────────────────────┐                              │
-│                    │   Frame Buffer      │  (Redis Stream per camera)   │
-│                    │   Connection Pool   │                              │
-│                    └──────────┬──────────┘                              │
-└───────────────────────────────┼─────────────────────────────────────────┘
-                                │
-┌───────────────────────────────▼─────────────────────────────────────────┐
-│                         AI PROCESSING LAYER                             │
-│                                                                         │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │                     GPU Batch Processor                          │   │
-│  │  ┌─────────────┐  ┌──────────────┐  ┌──────────────────────┐   │   │
-│  │  │  YOLOv11    │  │  ByteTrack   │  │    InsightFace       │   │   │
-│  │  │  Detection  │→ │  Tracking    │→ │    Recognition       │   │   │
-│  │  │  (n/s/m/l)  │  │  Multi-Obj  │  │    ArcFace Embed.    │   │   │
-│  │  └─────────────┘  └──────────────┘  └──────────────────────┘   │   │
-│  │                                                                  │   │
-│  │  ┌─────────────────────────────────────────────────────────┐   │   │
-│  │  │   ANPR Pipeline: WPOD-Net (plate detect) → LPRNet OCR  │   │   │
-│  │  └─────────────────────────────────────────────────────────┘   │   │
-│  └──────────────────────────────────┬──────────────────────────────┘   │
-└─────────────────────────────────────┼───────────────────────────────────┘
-                                      │ Structured Events (JSON)
-┌─────────────────────────────────────▼───────────────────────────────────┐
-│                        MESSAGE QUEUE LAYER                              │
-│                                                                         │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │                        RabbitMQ                                  │   │
-│  │  Exchange: evap.events    Exchange: evap.alerts                  │   │
-│  │  Exchange: evap.notifications   (DLQ for each)                  │   │
-│  │                                                                  │   │
-│  │  Queues: detections │ face_events │ vehicle_events │ alerts      │   │
-│  └─────┬─────────────────────┬─────────────┬──────────┬────────────┘   │
-└────────┼─────────────────────┼─────────────┼──────────┼────────────────┘
-         │                     │             │          │
-┌────────▼─────────────────────▼─────────────▼──────────▼────────────────┐
-│                         APPLICATION LAYER                               │
-│                                                                         │
-│  ┌──────────────┐  ┌──────────────┐  ┌─────────────┐  ┌────────────┐  │
-│  │  detection_  │  │  alert_      │  │  report_    │  │  sync_     │  │
-│  │  worker      │  │  worker      │  │  worker     │  │  worker    │  │
-│  │  (Celery)    │  │  (Celery)    │  │  (Celery)   │  │  (Celery)  │  │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬──────┘  └─────┬──────┘  │
-│         │                 │                  │               │          │
-│  ┌──────▼─────────────────▼──────────────────▼───────────────▼──────┐  │
-│  │                    FastAPI Backend (async)                         │  │
-│  │           REST API v1  ·  WebSocket Manager  ·  Background Tasks  │  │
-│  └──────────────────────────────────────────────────────────────────┘  │
-└────────────────────────────────┬────────────────────────────────────────┘
-                                 │
-         ┌───────────────────────┼───────────────────────┐
-         │                       │                       │
-┌────────▼─────────┐  ┌──────────▼──────────┐  ┌────────▼──────────────┐
-│   DATA LAYER     │  │  PRESENTATION LAYER │  │  MONITORING LAYER     │
-│                  │  │                     │  │                       │
-│  PostgreSQL 16   │  │  React 18 SPA       │  │  Prometheus           │
-│  + TimescaleDB   │  │  Zustand · R-Query  │  │  ↓                    │
-│                  │  │  Leaflet GIS        │  │  Grafana Dashboards   │
-│  Redis 7.2       │  │  WebSocket Hooks    │  │  ↓                    │
-│  (cache/sessions)│  │                     │  │  Alertmanager         │
-│                  │  │  ← REST + WS →      │  │  (PagerDuty/Slack)    │
-│  S3 / MinIO      │  │                     │  │                       │
-│  (video archive) │  │                     │  │  Jaeger Tracing       │
-└──────────────────┘  └─────────────────────┘  └───────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                      DATA INGESTION LAYER                        │
+│  RTSP cameras → FFmpeg decode → Frame Buffer (Redis per camera)  │
+└─────────────────────────────┬────────────────────────────────────┘
+                              │
+┌─────────────────────────────▼────────────────────────────────────┐
+│                      AI PROCESSING LAYER                         │
+│  YOLOv11 detection → ByteTrack multi-object tracking             │
+│  InsightFace ArcFace embeddings → person re-identification       │
+│  ANPR pipeline (plate detect → LPRNet OCR)                       │
+└─────────────────────────────┬────────────────────────────────────┘
+                              │ Structured Events (JSON)
+┌─────────────────────────────▼────────────────────────────────────┐
+│                     MESSAGE QUEUE LAYER                          │
+│  RabbitMQ: evap.events · evap.alerts · evap.notifications        │
+│  Celery workers: AI tasks · notifications · reports              │
+└──────┬──────────────────────┬────────────────────────────────────┘
+       │                      │
+┌──────▼──────────────────────▼────────────────────────────────────┐
+│                    APPLICATION LAYER                             │
+│  FastAPI async REST API v1 · WebSocket manager                   │
+│  SQLAlchemy ORM · Alembic migrations                             │
+│  Prometheus metrics middleware · JWT auth                        │
+└──────┬──────────────────────────────────────────────────────────┘
+       │
+┌──────▼──────────────────────────────────────────────────────────┐
+│                    PRESENTATION LAYER                           │
+│  React 18 SPA — Dashboard · Cameras · Employees · Attendance    │
+│  Alerts · Visitors · Vehicles · Reports · Floor Map · Settings  │
+│  Live WebSocket feeds · Recharts · Leaflet GIS                  │
+└─────────────────────────────────────────────────────────────────┘
+       │                    │                    │
+  PostgreSQL 16          Redis 7.2           S3 / MinIO
+  (primary store)    (cache/sessions)      (video/snapshots)
 ```
 
 ---
@@ -132,203 +165,280 @@ Key capabilities include automatic number plate recognition (ANPR), cross-camera
 ## Folder Structure
 
 ```
-evap/
-├── backend/
-│   ├── app/
-│   │   ├── api/
-│   │   │   └── v1/
-│   │   │       ├── endpoints/
-│   │   │       │   ├── cameras.py
-│   │   │       │   ├── alerts.py
-│   │   │       │   ├── attendance.py
-│   │   │       │   ├── vehicles.py
-│   │   │       │   ├── visitors.py
-│   │   │       │   ├── reports.py
-│   │   │       │   ├── zones.py
-│   │   │       │   └── erp.py
-│   │   │       ├── deps.py
-│   │   │       └── router.py
-│   │   ├── core/
-│   │   │   ├── config.py
-│   │   │   ├── security.py
-│   │   │   ├── logging.py
-│   │   │   └── exceptions.py
-│   │   ├── models/
-│   │   │   ├── camera.py
-│   │   │   ├── person.py
-│   │   │   ├── vehicle.py
-│   │   │   ├── event.py
-│   │   │   ├── alert.py
-│   │   │   ├── attendance.py
-│   │   │   └── visitor.py
-│   │   ├── schemas/
-│   │   │   ├── camera.py
-│   │   │   ├── alert.py
-│   │   │   └── report.py
-│   │   ├── services/
-│   │   │   ├── camera_service.py
-│   │   │   ├── face_service.py
-│   │   │   ├── vehicle_service.py
-│   │   │   ├── alert_service.py
-│   │   │   ├── attendance_service.py
-│   │   │   ├── erp_service.py
-│   │   │   └── report_service.py
-│   │   ├── workers/
-│   │   │   ├── celery_app.py
-│   │   │   ├── detection_worker.py
-│   │   │   ├── alert_worker.py
-│   │   │   ├── report_worker.py
-│   │   │   └── sync_worker.py
-│   │   ├── websocket/
-│   │   │   ├── manager.py
-│   │   │   ├── handlers.py
-│   │   │   └── events.py
-│   │   └── main.py
-│   ├── migrations/
-│   │   ├── env.py
-│   │   └── versions/
-│   ├── tests/
-│   │   ├── unit/
-│   │   ├── integration/
-│   │   └── conftest.py
-│   ├── Dockerfile
-│   └── requirements.txt
-├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── CameraGrid/
-│   │   │   ├── AlertPanel/
-│   │   │   ├── FloorMap/
-│   │   │   ├── HeatMap/
-│   │   │   └── common/
-│   │   ├── pages/
-│   │   │   ├── Dashboard/
-│   │   │   ├── Cameras/
-│   │   │   ├── Attendance/
-│   │   │   ├── Visitors/
-│   │   │   ├── Vehicles/
-│   │   │   ├── Reports/
-│   │   │   └── Settings/
-│   │   ├── services/
-│   │   │   ├── api.ts
-│   │   │   ├── websocket.ts
-│   │   │   └── auth.ts
-│   │   ├── store/
-│   │   │   ├── cameraStore.ts
-│   │   │   ├── alertStore.ts
-│   │   │   └── authStore.ts
-│   │   ├── hooks/
-│   │   │   ├── useWebSocket.ts
-│   │   │   ├── useCameraFeed.ts
-│   │   │   └── useAlerts.ts
-│   │   └── types/
-│   ├── public/
-│   ├── Dockerfile
-│   └── package.json
-├── ai_engine/
-│   ├── detectors/
-│   │   ├── yolo_detector.py
-│   │   ├── anpr_detector.py
-│   │   └── zone_detector.py
-│   ├── trackers/
-│   │   ├── bytetrack.py
-│   │   ├── track_manager.py
-│   │   └── reid_matcher.py
-│   ├── recognizers/
-│   │   ├── face_recognizer.py
-│   │   ├── lpr_recognizer.py
-│   │   └── embedding_store.py
-│   ├── pipeline/
-│   │   ├── frame_pipeline.py
-│   │   ├── batch_processor.py
-│   │   ├── stream_reader.py
-│   │   └── event_publisher.py
-│   ├── models/
-│   │   └── weights/          ← model weight files (not in git)
-│   ├── config/
-│   │   └── pipeline.yaml
-│   └── tests/
-├── deploy/
-│   ├── docker/
-│   │   ├── docker-compose.yml
-│   │   ├── docker-compose.prod.yml
-│   │   └── docker-compose.monitoring.yml
-│   ├── kubernetes/
-│   │   ├── namespaces/
-│   │   ├── deployments/
-│   │   │   ├── backend-deployment.yaml
-│   │   │   ├── ai-engine-deployment.yaml
-│   │   │   └── frontend-deployment.yaml
-│   │   ├── services/
-│   │   ├── configmaps/
-│   │   ├── secrets/
-│   │   ├── hpa/
-│   │   │   └── ai-engine-hpa.yaml
-│   │   └── ingress/
-│   ├── nginx/
-│   │   ├── nginx.conf
-│   │   └── ssl/
-│   └── scripts/
-│       ├── init_db.sh
-│       ├── seed_models.sh
-│       └── healthcheck.sh
-└── docs/
-    ├── README.md                  ← this file
-    ├── SYSTEM_ARCHITECTURE.md
-    ├── API_REFERENCE.md
-    ├── DEPLOYMENT_GUIDE.md
-    ├── CAMERA_INTEGRATION.md
-    └── ERP_INTEGRATION.md
+cctv_phase1/
+├── start_evap.bat                ← one-click Windows launcher
+├── logs/                         ← runtime logs (backend.log, frontend.log)
+│
+├── evap/
+│   ├── backend/
+│   │   ├── app/
+│   │   │   ├── api/v1/           ← REST endpoints
+│   │   │   │   ├── alerts.py
+│   │   │   │   ├── analytics.py
+│   │   │   │   ├── attendance.py
+│   │   │   │   ├── auth.py
+│   │   │   │   ├── cameras.py
+│   │   │   │   ├── dashboard.py
+│   │   │   │   ├── employees.py
+│   │   │   │   ├── erp.py
+│   │   │   │   ├── maps.py
+│   │   │   │   ├── notifications.py
+│   │   │   │   ├── reports.py
+│   │   │   │   ├── sites.py
+│   │   │   │   ├── vehicles.py
+│   │   │   │   └── visitors.py
+│   │   │   ├── core/             ← config, database, security, redis, rabbitmq
+│   │   │   ├── models/           ← SQLAlchemy ORM models
+│   │   │   ├── schemas/          ← Pydantic request/response schemas
+│   │   │   ├── services/         ← business logic layer
+│   │   │   ├── websocket/        ← WebSocket manager and event handlers
+│   │   │   ├── workers/          ← Celery tasks (AI, notifications, reports)
+│   │   │   └── main.py           ← FastAPI app entry point
+│   │   ├── alembic/              ← DB migrations
+│   │   └── requirements.txt
+│   │
+│   ├── frontend/
+│   │   └── src/
+│   │       ├── pages/            ← full-page views
+│   │       │   ├── Dashboard.jsx
+│   │       │   ├── Cameras.jsx
+│   │       │   ├── Employees.jsx
+│   │       │   ├── EmployeeDetail.jsx
+│   │       │   ├── Attendance.jsx
+│   │       │   ├── Alerts.jsx
+│   │       │   ├── Analytics.jsx
+│   │       │   ├── Vehicles.jsx
+│   │       │   ├── Visitors.jsx
+│   │       │   ├── FloorMap.jsx
+│   │       │   ├── Reports.jsx
+│   │       │   ├── Settings.jsx
+│   │       │   └── Login.jsx
+│   │       ├── components/       ← reusable UI components
+│   │       │   ├── Dashboard/    ← CameraMonitor, StatsCard, AlertsPanel, OccupancyChart
+│   │       │   ├── Layout/       ← Layout, Navbar, Sidebar
+│   │       │   └── common/       ← DataTable, Modal, StatusBadge, DateRangePicker
+│   │       ├── services/
+│   │       │   ├── api.js        ← Axios API client for all endpoints
+│   │       │   └── websocket.js  ← WebSocket client
+│   │       ├── hooks/            ← useAuth, useWebSocket
+│   │       └── context/          ← AuthContext
+│   │
+│   ├── ai_engine/                ← AI pipeline (ANPR, detection)
+│   └── docs/
+│       └── README.md             ← this file
+│
+├── enrollment_cli.py             ← CLI face enrollment tool
+├── face_enrollment.py            ← face enrollment module
+├── face_recognition_engine.py    ← InsightFace recognition engine
+├── attendance_engine.py          ← attendance calculation logic
+├── cross_camera_reid.py          ← cross-camera re-identification
+├── detection.py                  ← YOLO detection wrapper
+├── tracker.py                    ← ByteTrack wrapper
+│
+└── tests/
+    ├── unit/
+    └── integration/
 ```
 
 ---
 
-## Quick Start
+## Implemented Modules
 
-```bash
-# 1. Clone and configure environment
-git clone https://github.com/your-org/evap.git && cd evap
-cp .env.example .env          # edit DATABASE_URL, REDIS_URL, RABBITMQ_URL, SECRET_KEY
+| Module | Backend Endpoint | Frontend Page | Status |
+|---|---|---|---|
+| **Authentication** | `POST /api/v1/auth/login` | `Login.jsx` | Done |
+| **Dashboard** | `GET /api/v1/dashboard/stats` + WebSocket | `Dashboard.jsx` | Done |
+| **Camera Management** | `GET/POST/PUT/DELETE /api/v1/cameras` | `Cameras.jsx` | Done |
+| **Live MJPEG Streaming** | `GET /api/v1/cameras/{id}/stream` | `CameraMonitor`, `Cameras.jsx` | Done |
+| **RTSP Diagnostics** | `GET /api/v1/cameras/{id}/rtsp-test` | toast on stream error | Done |
+| **Camera Health Check** | `GET /api/v1/cameras/{id}/health`, `POST /health-check-all` | `Cameras.jsx` | Done |
+| **Employee Management** | `GET/POST/PUT/DELETE /api/v1/employees` | `Employees.jsx` | Done |
+| **Employee Detail + Photos** | `GET /api/v1/employees/{id}`, photo upload/delete | `EmployeeDetail.jsx` | Done |
+| **Face Enrollment** | `POST /api/v1/employees/{id}/enroll` | `EmployeeDetail.jsx` | Done |
+| **Attendance** | `GET /api/v1/attendance` | `Attendance.jsx` | Done |
+| **Alerts** | `GET /api/v1/alerts`, unread count, acknowledge | `Alerts.jsx` | Done |
+| **Analytics** | `GET /api/v1/analytics` | `Analytics.jsx` | Done |
+| **Vehicles / ANPR** | `GET /api/v1/vehicles` | `Vehicles.jsx` | Done |
+| **Visitors** | `GET /api/v1/visitors` | `Visitors.jsx` | Done |
+| **Floor Map / GIS** | `GET /api/v1/maps` | `FloorMap.jsx` | Done |
+| **Reports** | `GET /api/v1/reports` | `Reports.jsx` | Done |
+| **ERP Integration** | `GET/POST /api/v1/erp` | — | Backend done |
+| **Notifications** | `GET /api/v1/notifications` | — | Backend done |
+| **Sites** | `GET/POST /api/v1/sites` | — | Backend done |
 
-# 2. Pull model weights and start all services
-bash deploy/scripts/seed_models.sh
-docker compose -f deploy/docker/docker-compose.yml up -d
+---
 
-# 3. Open the dashboard (default credentials: admin / changeme)
-open http://localhost:3000
+## Key Dependencies
+
+### Backend (`requirements.txt`)
+
+| Package | Purpose |
+|---|---|
+| `fastapi 0.115` | Async REST API framework |
+| `uvicorn[standard]` | ASGI server |
+| `sqlalchemy 2.x` | ORM (async) |
+| `alembic` | Database migrations |
+| `asyncpg` / `psycopg2-binary` | PostgreSQL drivers |
+| `redis` | Cache and session store |
+| `celery` | Async task queue |
+| `aio-pika` / `pika` | RabbitMQ client |
+| `python-jose` | JWT authentication |
+| `bcrypt` | Password hashing |
+| `pydantic 2.x` | Schema validation |
+| `reportlab` / `openpyxl` | PDF / Excel report generation |
+| `prometheus-client` | Metrics exposure |
+| `pillow` | Image processing |
+| `qrcode` / `pyotp` | QR code and OTP support |
+
+### Frontend
+
+| Package | Purpose |
+|---|---|
+| `react 18` | UI framework |
+| `react-router-dom` | Client-side routing |
+| `axios` | HTTP client |
+| `react-hot-toast` | Notification toasts |
+| `react-icons` | Icon library (Remix Icons) |
+| `recharts` | Charts and occupancy graphs |
+| `date-fns` | Date formatting |
+
+---
+
+## Environment Variables
+
+Create `evap/backend/.env` (copy from `.env.example`):
+
+```env
+# Database
+DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/evap
+
+# Redis
+REDIS_URL=redis://localhost:6379/0
+
+# RabbitMQ
+RABBITMQ_URL=amqp://guest:guest@localhost:5672/
+
+# Auth
+SECRET_KEY=change-me-to-a-random-secret
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=1440
+
+# Snapshots / static files
+SNAPSHOT_DIR=./snapshots
+
+# Optional: S3 for video archive
+# S3_BUCKET=evap-archive
+# AWS_ACCESS_KEY_ID=...
+# AWS_SECRET_ACCESS_KEY=...
 ```
 
-> For production deployments, see [`docs/DEPLOYMENT_GUIDE.md`](DEPLOYMENT_GUIDE.md). For Kubernetes, see `deploy/kubernetes/`.
+---
+
+## API Reference
+
+Interactive docs are available at `http://localhost:8000/docs` once the backend is running.
+
+Notable endpoints:
+
+```
+GET  /health                                      — service health
+GET  /metrics                                     — Prometheus metrics
+
+POST /api/v1/auth/login                           — obtain JWT token
+GET  /api/v1/auth/me                              — current user
+
+GET  /api/v1/cameras                              — list cameras (paginated)
+POST /api/v1/cameras                              — register camera (RTSP URL encrypted at rest)
+PUT  /api/v1/cameras/{id}                         — update camera / credentials
+DELETE /api/v1/cameras/{id}                       — delete camera
+GET  /api/v1/cameras/{id}/stream                  — live MJPEG proxy (RTSP → browser)
+GET  /api/v1/cameras/{id}/health                  — TCP ping to port 554
+GET  /api/v1/cameras/{id}/rtsp-test               — diagnostic: attempt RTSP open, return error details
+POST /api/v1/cameras/{id}/restart                 — force stream reconnect
+POST /api/v1/cameras/health-check-all             — ping all registered cameras
+
+GET  /api/v1/employees                            — list employees
+POST /api/v1/employees                            — create employee
+GET  /api/v1/employees/{id}                       — get employee + photos
+PUT  /api/v1/employees/{id}                       — update employee
+POST /api/v1/employees/{id}/photos                — upload face photos (multipart)
+DELETE /api/v1/employees/{id}/photos/{filename}   — delete face photo
+POST /api/v1/employees/{id}/enroll                — trigger face enrollment
+GET  /api/v1/employees/{id}/enrollment-status     — poll enrollment status
+
+GET  /api/v1/alerts                               — list alerts (filterable)
+GET  /api/v1/alerts/unread-count                  — badge count for navbar
+GET  /api/v1/alerts/stats                         — severity / type breakdown
+POST /api/v1/alerts/acknowledge-all               — bulk acknowledge
+POST /api/v1/alerts/{id}/acknowledge              — acknowledge single alert
+
+GET  /api/v1/attendance                           — list attendance records
+GET  /api/v1/dashboard/stats                      — live KPIs (people, vehicles, alerts, cameras)
+GET  /api/v1/dashboard/occupancy-history          — time-series occupancy for chart
+GET  /api/v1/dashboard/recent-detections          — latest detection events
+GET  /api/v1/analytics                            — analytics data
+
+WS   /ws/{client_id}                             — per-client WebSocket (alerts, occupancy updates)
+WS   /ws/live-tracking                            — live Phase 2 tracking broadcast (unauthenticated)
+```
 
 ---
 
-## Module Descriptions
+## WebSocket Events
 
-| Module | Description | Key Technologies |
-|---|---|---|
-| **Dashboard** | Real-time camera grid, system health KPIs, live event feed, and per-zone occupancy counters refreshed via WebSocket | React 18, Zustand, WebSocket, Recharts |
-| **Floor Map / GIS** | Interactive floor plan overlays with polygon-defined zones, live head-count labels, and occupancy threshold heat coloring | Leaflet.js, GeoJSON, PostGIS, WebSocket |
-| **Vehicle Analytics / ANPR** | Automatic number plate recognition with entry/exit logging, whitelist/blacklist enforcement, and parking duration tracking | WPOD-Net, LPRNet, PostgreSQL, Redis |
-| **Visitor Management** | Pre-registration portal, QR-code check-in, face capture on arrival, escort workflow, overstay alerts, and digital sign-out | InsightFace, FastAPI, PostgreSQL, SMTP |
-| **Smart Alerts** | Configurable rule engine covering 20+ alert types; classifies, deduplicates, and escalates via email/SMS/webhook with SLA tracking | RabbitMQ, Celery, Twilio, SendGrid |
-| **ERP Integration** | Bi-directional sync with SAP S/4HANA, Oracle HCM, and REST-based HR systems; pushes attendance, visitors, and vehicle events in real time | Celery sync_worker, OAuth2, Webhooks |
-| **Attendance Automation** | Face-recognition-based clock-in/clock-out replacing physical terminals; maps to shifts, flags late arrivals, early exits, and overtime | InsightFace, TimescaleDB, Celery |
-| **Heat Maps / Behavioral Analytics** | Temporal density overlays, dwell-time histograms, movement trajectories, crowd flow vectors, and zone-transition matrices | OpenCV, NumPy, TimescaleDB, D3.js |
-| **Multi-Camera Analytics** | Cross-camera re-identification, entity timeline reconstruction across handoff zones, global track graph, and entry-exit pair matching | InsightFace ReID, ByteTrack, Redis |
-| **Executive Reporting** | Scheduled and ad-hoc PDF/Excel reports with KPI scorecards, trend analysis, camera uptime logs, and compliance audit exports | ReportLab, OpenPyXL, Celery, S3/MinIO |
+Two WebSocket endpoints are available:
+
+**Per-client channel** — `ws://localhost:8000/ws/{client_id}`  
+The frontend generates a random `client_id` at login and reconnects automatically. The server pushes JSON events:
+
+```json
+{ "type": "alert",             "data": { "alert_id": 42, "severity": "critical" } }
+{ "type": "occupancy_update",  "data": { "zone_id": "lobby", "count": 17 } }
+{ "type": "attendance_event",  "data": { "employee_id": "EMP001", "action": "check_in" } }
+{ "type": "camera_status",     "data": { "camera_id": 1, "status": "offline" } }
+{ "type": "pong",              "client_id": "...", "echo": "..." }
+```
+
+**Live tracking broadcast** — `ws://localhost:8000/ws/live-tracking`  
+Unauthenticated. Pushes Phase 2 detection stats every 2 seconds:
+
+```json
+{
+  "type": "live_tracking",
+  "people_present": 12,
+  "vehicles_present": 3,
+  "live_counts": { "person": 12, "car": 2, "motorcycle": 1 },
+  "recent_crossings": [{ "track_id": 7, "class": "person", "direction": "in", "line": "Gate A" }]
+}
+```
+
+> **Note:** The frontend uses the **native browser WebSocket API** — not Socket.IO. Connecting a Socket.IO client to these endpoints will fail with a 403 handshake error.
 
 ---
 
-## Camera Scale
+## Camera Streaming Notes
 
-EVAP supports deployments ranging from single-site pilots to multi-site enterprise rollouts:
+The backend proxies RTSP → MJPEG via OpenCV + FFmpeg. Key points:
 
-| Scale | Camera Count | Deployment Model |
+- **RTSP URL format** — Passwords containing `@` must be percent-encoded: `nepal@123` → `nepal%40123`.  
+  Full example: `rtsp://admin:nepal%40123@10.30.0.161:554/Streaming/Channels/102`
+- **Hikvision paths** — channel 101 = H.265 main stream, channel 102 = H.265 sub-stream. Use `/Streaming/Channels/102` for lower bandwidth.
+- **H.265 / HEVC** — The first 3–20 frames may fail while the decoder initialises VPS/SPS/PPS headers. The stream endpoint tolerates up to 20 consecutive decode failures before giving up.
+- **Connection timeout** — Set via `OPENCV_FFMPEG_CAPTURE_OPTIONS=rtsp_transport;tcp|stimeout;5000000` (5 seconds). `CAP_PROP_OPEN_TIMEOUT_MSEC` is silently ignored by the FFmpeg backend on Windows.
+- **Stream errors** — If the RTSP URL is wrong or the camera rejects the connection, the backend returns **HTTP 503** with a plain-English error. The camera card in the browser shows a toast popup with the `rtsp-test` diagnostic result.
+- **RTSP credentials are encrypted at rest** — Fernet symmetric encryption via `SECRET_KEY`. The raw URL is never stored in the database.
+
+---
+
+## Troubleshooting
+
+| Symptom | Likely Cause | Fix |
 |---|---|---|
-| Pilot | 1 – 20 | Single server, Docker Compose |
-| Mid-range | 21 – 100 | Multi-worker, Docker Compose with GPU nodes |
-| Enterprise | 101 – 500 | Kubernetes cluster, HPA-managed AI workers |
-| Large Enterprise | 500+ | Multi-region Kubernetes, federated DB, edge nodes |
+| `405 Method Not Allowed` on `/alerts/unread-count` | Stale `__pycache__` bytecode from old route ordering | Always start via `start_evap.bat` — it clears `__pycache__` first |
+| Camera stream shows "Stream unavailable" | Wrong RTSP URL, wrong credentials, or firewall | Click Edit Camera → enter the full RTSP URL; watch backend terminal for `[STREAM] cam=N` log lines |
+| `422 Unprocessable Entity` on photo upload | Multipart field name mismatch | Frontend sends `photos` field; backend expects `photos: List[UploadFile]` |
+| WebSocket 403 | Connecting a Socket.IO client to a native FastAPI WebSocket | Use the browser native `WebSocket` API, not socket.io-client |
+| `GET /dashboard/stats` 500 | Model attribute mismatch (e.g., `Camera.id` vs `camera_id`) | The field name in the SQLAlchemy model is `camera_id` — check dashboard.py imports |
 
 ---
 
@@ -336,11 +446,11 @@ EVAP supports deployments ranging from single-site pilots to multi-site enterpri
 
 | Tier | Cameras | CPU | RAM | GPU | Storage |
 |---|---|---|---|---|---|
-| **Small** | Up to 20 | 16-core (Intel Xeon / AMD EPYC) | 32 GB DDR4 | NVIDIA RTX 3080 (10 GB VRAM) | 2 TB NVMe SSD |
-| **Medium** | 21 – 100 | 32-core dual-socket | 128 GB DDR4 | 2× NVIDIA A10 (24 GB VRAM each) | 10 TB NVMe RAID-10 |
-| **Large** | 100+ | Kubernetes node pool (≥ 8 nodes, 32 cores each) | 256 GB per node | NVIDIA A100 80 GB per AI node | Distributed storage (Ceph / NetApp) |
+| **Dev / Pilot** | 1 – 20 | 8-core | 16 GB | GTX 1080 / RTX 3070 | 500 GB SSD |
+| **Mid-range** | 21 – 100 | 32-core | 64 GB | NVIDIA A10 (24 GB VRAM) | 4 TB NVMe |
+| **Enterprise** | 100+ | Kubernetes cluster | 128 GB per node | NVIDIA A100 80 GB | Distributed (Ceph) |
 
-> **OS**: Ubuntu 22.04 LTS recommended. CUDA 12.4+, cuDNN 9.x required on all GPU nodes.
+> CUDA 12.4+ and cuDNN 9.x required on GPU nodes. Ubuntu 22.04 LTS recommended for production.
 
 ---
 
@@ -352,20 +462,8 @@ This project is licensed under the **MIT License** — see the [LICENSE](../LICE
 
 ## Contributing
 
-1. Fork the repository and create a feature branch: `git checkout -b feature/your-feature`.
-2. Follow the coding standards defined in `.editorconfig` and `pyproject.toml` (Black + Ruff for Python, ESLint + Prettier for TypeScript).
-3. Write or update tests — minimum 80% coverage required for new services.
-4. Open a pull request against `main` with a clear description of the change and link to any related issue.
-5. All PRs require at least one approval and a passing CI pipeline before merge.
-
----
-
-## Documentation Index
-
-| Document | Purpose |
-|---|---|
-| [`SYSTEM_ARCHITECTURE.md`](SYSTEM_ARCHITECTURE.md) | Deep-dive into component design, data flows, scalability, HA, and security |
-| [`API_REFERENCE.md`](API_REFERENCE.md) | Full REST + WebSocket API reference with request/response schemas |
-| [`DEPLOYMENT_GUIDE.md`](DEPLOYMENT_GUIDE.md) | Step-by-step Docker and Kubernetes deployment instructions |
-| [`CAMERA_INTEGRATION.md`](CAMERA_INTEGRATION.md) | RTSP/ONVIF camera onboarding, credential management, and troubleshooting |
-| [`ERP_INTEGRATION.md`](ERP_INTEGRATION.md) | SAP, Oracle, and custom ERP connector setup and webhook reference |
+1. Fork and create a feature branch: `git checkout -b feature/your-feature`.
+2. Follow coding standards: Black + Ruff for Python, ESLint for JavaScript/JSX.
+3. Write or update tests — minimum 80% coverage for new services.
+4. Open a pull request against `main` with a description and linked issue.
+5. All PRs require one approval and a passing CI run before merge.

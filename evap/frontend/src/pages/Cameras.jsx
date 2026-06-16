@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { camerasAPI } from '../services/api';
 import StatusBadge from '../components/common/StatusBadge';
 import toast from 'react-hot-toast';
@@ -8,6 +8,81 @@ import {
 } from 'react-icons/ri';
 
 const CAMERA_TYPES = ['fixed', 'ptz', 'fisheye', 'thermal', 'anpr', '360'];
+
+// Live MJPEG stream preview for a camera card
+function CameraPreview({ cam }) {
+  const [streamError, setStreamError] = React.useState(false);
+  const imgRef = useRef(null);
+
+  // Reset error state when camera status changes to online
+  React.useEffect(() => {
+    if (cam.status === 'online') setStreamError(false);
+  }, [cam.status]);
+
+  const streamSrc = camerasAPI.streamUrl(cam.id);
+
+  return (
+    <div style={{
+      background: '#0d1117', borderRadius: 8, height: 140,
+      border: '1px solid #21262d', marginBottom: 12,
+      position: 'relative', overflow: 'hidden',
+    }}>
+      {cam.status === 'online' && !streamError && cam.has_rtsp_url !== false ? (
+        <img
+          ref={imgRef}
+          src={streamSrc}
+          alt="Live stream"
+          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          onError={() => {
+            setStreamError(true);
+            camerasAPI.testRtsp(cam.id)
+              .then(res => {
+                const d = res.data;
+                const msg = d?.success
+                  ? `${cam.name}: stream opened but no frames`
+                  : `${cam.name}: ${d?.error || 'Cannot connect to RTSP stream'}`;
+                toast.error(msg, { duration: 10000, id: `stream-err-${cam.id}` });
+              })
+              .catch(() => {
+                toast.error(`${cam.name}: stream unavailable — check backend console`, {
+                  duration: 8000, id: `stream-err-${cam.id}`,
+                });
+              });
+          }}
+        />
+      ) : (
+        <div style={{
+          width: '100%', height: '100%',
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', color: '#30363d',
+          padding: '0 8px', textAlign: 'center',
+        }}>
+          <RiCameraLine size={32} />
+          <div style={{ fontSize: 10, marginTop: 4, color: '#484f58', lineHeight: 1.4 }}>
+            {cam.status !== 'online'
+              ? 'Camera offline'
+              : cam.has_rtsp_url === false
+                ? 'No RTSP URL\nEdit camera → add credentials'
+                : 'Stream unavailable\nCheck RTSP URL/credentials'}
+          </div>
+        </div>
+      )}
+      {cam.status === 'online' && !streamError && (
+        <span style={{
+          position: 'absolute', top: 6, left: 8,
+          background: 'rgba(248,81,73,0.85)',
+          color: '#fff', fontSize: 10, padding: '1px 6px',
+          borderRadius: 4, fontWeight: 600,
+        }}>● LIVE</span>
+      )}
+      <span style={{
+        position: 'absolute', top: 6, right: 8,
+        background: 'rgba(0,0,0,0.6)',
+        color: '#8b949e', fontSize: 10, padding: '1px 6px', borderRadius: 4,
+      }}>{cam.camera_type}</span>
+    </div>
+  );
+}
 
 const EMPTY_FORM = {
   name: '', site: '', ip_address: '', username: '',
@@ -210,29 +285,8 @@ export default function CamerasPage() {
                   <StatusBadge status={cam.status} />
                 </div>
 
-                {/* Snapshot placeholder */}
-                <div style={{
-                  background: '#0d1117', borderRadius: 8, height: 120,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  border: '1px solid #21262d', marginBottom: 12, position: 'relative', overflow: 'hidden',
-                }}>
-                  <div className="text-center" style={{ color: '#30363d' }}>
-                    <RiCameraLine size={32} />
-                    <div style={{ fontSize: 11, marginTop: 4 }}>
-                      {cam.status === 'online' ? 'Live stream' : 'Stream offline'}
-                    </div>
-                  </div>
-                  {cam.status === 'online' && (
-                    <span style={{
-                      position: 'absolute', top: 6, left: 8, background: 'rgba(248,81,73,0.85)',
-                      color: '#fff', fontSize: 10, padding: '1px 6px', borderRadius: 4, fontWeight: 600,
-                    }}>● LIVE</span>
-                  )}
-                  <span style={{
-                    position: 'absolute', top: 6, right: 8, background: 'rgba(0,0,0,0.6)',
-                    color: '#8b949e', fontSize: 10, padding: '1px 6px', borderRadius: 4,
-                  }}>{cam.camera_type}</span>
-                </div>
+                {/* Live stream / snapshot placeholder */}
+                <CameraPreview cam={cam} />
 
                 {/* Stats row */}
                 <div className="d-flex gap-2 mb-2" style={{ fontSize: 11 }}>

@@ -59,6 +59,8 @@ export const camerasAPI = {
   checkHealth: (id) => api.get(`/cameras/${id}/health`),
   healthCheckAll: () => api.post('/cameras/health-check-all'),
   restartStream: (id) => api.post(`/cameras/${id}/restart`),
+  testRtsp: (id) => api.get(`/cameras/${id}/rtsp-test`),
+  streamUrl: (id) => `${BASE_URL}/api/v1/cameras/${id}/stream?token=${localStorage.getItem('evap_token') || ''}`,
 };
 
 export const employeesAPI = {

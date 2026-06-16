@@ -90,6 +90,8 @@ def _cam_to_out(cam: CameraMaster) -> dict:
         "last_heartbeat": cam.last_heartbeat,
         "manufacturer": cam.manufacturer,
         "model": cam.model,
+        # Tells the frontend whether an RTSP URL is stored (never expose the URL itself)
+        "has_rtsp_url": bool(cam.rtsp_url_encrypted),
     }
 
 
@@ -112,10 +114,38 @@ def _build_camera(body: CameraCreate | CameraUpdate) -> dict:
         data["manufacturer"] = body.site
     if getattr(body, 'zone', None) is not None:
         data["model"] = body.zone
-    # Build/store RTSP URL
-    rtsp = getattr(body, 'rtsp_url', None)
-    if rtsp:
-        data["rtsp_url_encrypted"] = encrypt_rtsp_url(rtsp)
+
+    # ------------------------------------------------------------------ #
+    # RTSP URL resolution (priority order):
+    #   1. Explicit rtsp_url from the form → use as-is (user is responsible
+    #      for encoding special chars like @ in the password as %40)
+    #   2. ip + username + password → build URL with RFC-3986 percent-encoding
+    #      so passwords like "nepal@123" become "nepal%40123" automatically
+    #   3. ip only → bare rtsp://ip:554/stream
+    # The result is always AES-encrypted before storage.
+    # ------------------------------------------------------------------ #
+    from urllib.parse import quote as _quote
+
+    rtsp = getattr(body, 'rtsp_url', None) or ''
+    username = getattr(body, 'username', None) or ''
+    password = getattr(body, 'password', None) or ''
+    ip = getattr(body, 'ip_address', None) or ''
+
+    if rtsp.strip():
+        data["rtsp_url_encrypted"] = encrypt_rtsp_url(rtsp.strip())
+    elif ip:
+        if username and password:
+            # Percent-encode credentials so special chars (@ # : /) don't break the URL
+            enc_user = _quote(username, safe='')
+            enc_pass = _quote(password, safe='')
+            built = f"rtsp://{enc_user}:{enc_pass}@{ip}:554/stream"
+        elif username:
+            enc_user = _quote(username, safe='')
+            built = f"rtsp://{enc_user}@{ip}:554/stream"
+        else:
+            built = f"rtsp://{ip}:554/stream"
+        data["rtsp_url_encrypted"] = encrypt_rtsp_url(built)
+
     return data
 
 
@@ -304,3 +334,210 @@ async def health_check_all(
 
     background_tasks.add_task(_check_all)
     return {"queued": len(cams), "message": "Health check started for all cameras"}
+
+
+# ---------------------------------------------------------------------------
+# RTSP connectivity test (diagnostic — does NOT stream, just checks open)
+# ---------------------------------------------------------------------------
+@router.get("/{camera_id}/rtsp-test")
+async def rtsp_test(
+    camera_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_active_user),
+):
+    """Try to open the RTSP URL stored for this camera and report success/failure.
+    Useful for diagnosing stream issues without reloading the full UI."""
+    import cv2 as _cv2
+
+    cam = (await db.execute(
+        select(CameraMaster).where(CameraMaster.camera_id == camera_id)
+    )).scalar_one_or_none()
+    if not cam:
+        raise HTTPException(status_code=404, detail="Camera not found")
+
+    rtsp_url: Optional[str] = None
+    if cam.rtsp_url_encrypted:
+        try:
+            from app.core.security import decrypt_rtsp_url
+            rtsp_url = decrypt_rtsp_url(cam.rtsp_url_encrypted)
+        except Exception:
+            pass
+    if not rtsp_url and cam.ip_address:
+        rtsp_url = f"rtsp://{cam.ip_address}:554/stream"
+
+    if not rtsp_url:
+        return {"camera_id": camera_id, "success": False, "error": "No RTSP URL configured"}
+
+    # Mask password in the returned URL for security
+    import re as _re
+    safe_url = _re.sub(r':[^:@]+@', ':***@', rtsp_url)
+
+    loop = asyncio.get_event_loop()
+
+    def _try_open():
+        import os as _os
+        _os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|stimeout;5000000"
+        c = _cv2.VideoCapture(rtsp_url, _cv2.CAP_FFMPEG)
+        opened = c.isOpened()
+        c.release()
+        return opened
+
+    try:
+        opened = await asyncio.wait_for(loop.run_in_executor(None, _try_open), timeout=8)
+        return {
+            "camera_id": camera_id,
+            "success": opened,
+            "rtsp_url_masked": safe_url,
+            "has_rtsp_url": bool(cam.rtsp_url_encrypted),
+            "error": None if opened else "cv2 could not open the RTSP stream — check credentials and stream path",
+        }
+    except asyncio.TimeoutError:
+        return {
+            "camera_id": camera_id,
+            "success": False,
+            "rtsp_url_masked": safe_url,
+            "has_rtsp_url": bool(cam.rtsp_url_encrypted),
+            "error": "Timed out after 8 s — camera unreachable or stream path incorrect",
+        }
+
+
+# ---------------------------------------------------------------------------
+# MJPEG live stream proxy
+# ---------------------------------------------------------------------------
+@router.get("/{camera_id}/stream")
+async def stream_camera(
+    camera_id: int,
+    token: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Proxy RTSP → MJPEG for browser display.
+
+    The VideoCapture is opened BEFORE the StreamingResponse so that failures
+    return a proper HTTP 503 (which triggers img.onError in the browser).
+    All steps are logged to the evap.stream logger — visible in the backend
+    console window started by start_evap.bat.
+    """
+    import logging
+    import os
+    import re
+    import cv2 as _cv2
+    from fastapi.responses import StreamingResponse
+
+    log = logging.getLogger("evap.stream")
+
+    cam = (await db.execute(
+        select(CameraMaster).where(CameraMaster.camera_id == camera_id)
+    )).scalar_one_or_none()
+    if not cam:
+        raise HTTPException(status_code=404, detail="Camera not found")
+
+    # ── Resolve RTSP URL ────────────────────────────────────────────────
+    rtsp_url: Optional[str] = None
+    if cam.rtsp_url_encrypted:
+        try:
+            from app.core.security import decrypt_rtsp_url
+            rtsp_url = decrypt_rtsp_url(cam.rtsp_url_encrypted)
+        except Exception as dec_err:
+            log.error("[STREAM] cam=%d decryption failed: %s", camera_id, dec_err)
+
+    if not rtsp_url and cam.ip_address:
+        rtsp_url = f"rtsp://{cam.ip_address}:554/stream"
+        log.warning("[STREAM] cam=%d no stored URL — using IP fallback: %s", camera_id, rtsp_url)
+
+    if not rtsp_url:
+        log.error("[STREAM] cam=%d no RTSP URL and no IP — aborting", camera_id)
+        raise HTTPException(status_code=503, detail="No RTSP URL configured for this camera")
+
+    # Mask password in all log output
+    safe_url = re.sub(r'(rtsp://[^:]+:)[^@]+(@)', r'\1***\2', rtsp_url)
+    log.info("[STREAM] cam=%d  url=%s  has_encrypted=%s",
+             camera_id, safe_url, bool(cam.rtsp_url_encrypted))
+
+    # ── Open VideoCapture BEFORE starting the response ───────────────────
+    # This is critical: if we open inside the generator, a failure sends
+    # HTTP 200 with an empty body and the browser never fires img.onError.
+    loop = asyncio.get_event_loop()
+
+    def _open_capture() -> _cv2.VideoCapture:
+        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
+            "rtsp_transport;tcp|stimeout;5000000"   # 5 s connect timeout (µs)
+        )
+        c = _cv2.VideoCapture(rtsp_url, _cv2.CAP_FFMPEG)
+        c.set(_cv2.CAP_PROP_BUFFERSIZE, 1)
+        return c
+
+    try:
+        cap = await asyncio.wait_for(
+            loop.run_in_executor(None, _open_capture), timeout=12
+        )
+    except asyncio.TimeoutError:
+        log.error("[STREAM] cam=%d TIMEOUT (>12 s) connecting to %s", camera_id, safe_url)
+        raise HTTPException(
+            status_code=503,
+            detail=f"Timeout connecting to RTSP stream after 12 s — url={safe_url}",
+        )
+    except Exception as open_err:
+        log.error("[STREAM] cam=%d OPEN EXCEPTION %s url=%s", camera_id, open_err, safe_url)
+        raise HTTPException(status_code=503, detail=str(open_err))
+
+    if not cap.isOpened():
+        cap.release()
+        log.error(
+            "[STREAM] cam=%d cv2.VideoCapture.isOpened()=False url=%s  "
+            "→ wrong credentials, unreachable host, or incorrect stream path",
+            camera_id, safe_url,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"Cannot open RTSP stream: {safe_url}  "
+                f"Possible causes: wrong password, wrong stream path (/Streaming/Channels/102 "
+                f"vs /stream1 etc.), or camera firewall blocking this server's IP."
+            ),
+        )
+
+    log.info("[STREAM] cam=%d OPENED OK — starting MJPEG relay", camera_id)
+
+    # ── Frame relay generator ────────────────────────────────────────────
+    async def _mjpeg_generator():
+        try:
+            consecutive_failures = 0
+            frame_count = 0
+            # H.265/HEVC cameras drop the first ~3 frames while the decoder
+            # initialises VPS/SPS/PPS — allow up to 20 before giving up.
+            while consecutive_failures < 20:
+                ret, frame = await loop.run_in_executor(None, cap.read)
+                if not ret:
+                    consecutive_failures += 1
+                    if consecutive_failures == 1:
+                        log.debug("[STREAM] cam=%d frame decode skip (HEVC init?)", camera_id)
+                    await asyncio.sleep(0.05)
+                    continue
+                consecutive_failures = 0
+                frame_count += 1
+                if frame_count == 1:
+                    log.info("[STREAM] cam=%d first frame OK shape=%s", camera_id, frame.shape)
+
+                h, w = frame.shape[:2]
+                if w > 1280:
+                    scale = 1280 / w
+                    frame = _cv2.resize(frame, (1280, int(h * scale)))
+                _, buf = _cv2.imencode(".jpg", frame, [_cv2.IMWRITE_JPEG_QUALITY, 75])
+                yield (
+                    b"--frame\r\n"
+                    b"Content-Type: image/jpeg\r\n\r\n"
+                    + buf.tobytes()
+                    + b"\r\n"
+                )
+                await asyncio.sleep(0.033)   # ~30 fps cap
+        except Exception as stream_err:
+            log.error("[STREAM] cam=%d stream error after %d frames: %s",
+                      camera_id, frame_count, stream_err)
+        finally:
+            cap.release()
+            log.info("[STREAM] cam=%d VideoCapture released", camera_id)
+
+    return StreamingResponse(
+        _mjpeg_generator(),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+    )

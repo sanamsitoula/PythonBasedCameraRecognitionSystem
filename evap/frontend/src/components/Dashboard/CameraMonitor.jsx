@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { camerasAPI, dashboardAPI } from '../../services/api';
+import toast from 'react-hot-toast';
 import {
   RiCameraLine, RiGroupLine,
   RiArrowLeftLine, RiArrowRightLine, RiRefreshLine,
@@ -44,6 +45,16 @@ function GenderBar({ male = 0, female = 0 }) {
 
 function CameraCard({ cam, stats }) {
   const isOnline = cam.status === 'online';
+  const [streamError, setStreamError] = useState(false);
+  const prevStatus = useRef(cam.status);
+  // Reset error when camera comes back online
+  useEffect(() => {
+    if (cam.status === 'online' && prevStatus.current !== 'online') {
+      setStreamError(false);
+    }
+    prevStatus.current = cam.status;
+  }, [cam.status]);
+
   return (
     <div style={{
       background: '#161b22', border: '1px solid #30363d',
@@ -53,17 +64,45 @@ function CameraCard({ cam, stats }) {
       <div style={{
         background: '#0d1117', height: 160, position: 'relative',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        borderBottom: '1px solid #21262d',
+        borderBottom: '1px solid #21262d', overflow: 'hidden',
       }}>
-        <div className="text-center" style={{ color: '#21262d' }}>
-          <RiCameraLine size={40} />
-          <div style={{ fontSize: 11, marginTop: 4, color: '#30363d' }}>
-            {isOnline ? 'RTSP stream' : 'Offline'}
+        {isOnline && !streamError && cam.has_rtsp_url !== false ? (
+          <img
+            src={camerasAPI.streamUrl(cam.id)}
+            alt="Live"
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            onError={() => {
+              setStreamError(true);
+              camerasAPI.testRtsp(cam.id)
+                .then(res => {
+                  const d = res.data;
+                  const msg = d?.success
+                    ? `${cam.name}: stream opened but no frames`
+                    : `${cam.name}: ${d?.error || 'Cannot connect to RTSP stream'}`;
+                  toast.error(msg, { duration: 10000, id: `stream-err-${cam.id}` });
+                })
+                .catch(() => {
+                  toast.error(`${cam.name}: stream unavailable — check backend logs`, {
+                    duration: 8000, id: `stream-err-${cam.id}`,
+                  });
+                });
+            }}
+          />
+        ) : (
+          <div className="text-center" style={{ color: '#21262d', padding: '0 12px' }}>
+            <RiCameraLine size={36} />
+            <div style={{ fontSize: 10, marginTop: 4, color: '#484f58', lineHeight: 1.4 }}>
+              {!isOnline
+                ? 'Camera offline'
+                : cam.has_rtsp_url === false
+                  ? 'No RTSP URL — edit camera\nto add credentials'
+                  : 'Stream unavailable\nCheck RTSP URL / credentials'}
+            </div>
           </div>
-        </div>
+        )}
         {/* Overlays */}
         <div style={{ position: 'absolute', top: 8, left: 10, display: 'flex', gap: 6 }}>
-          {isOnline && (
+          {isOnline && !streamError && (
             <span style={{
               background: 'rgba(248,81,73,0.85)', color: '#fff',
               fontSize: 10, padding: '2px 6px', borderRadius: 4, fontWeight: 700,
