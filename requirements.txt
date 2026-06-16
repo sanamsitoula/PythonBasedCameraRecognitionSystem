@@ -1,0 +1,72 @@
+# ─── CCTV Analytics Phase 1 & 2 – Python Dependencies ───────────────────────
+# Tested on Python 3.13 / Windows 11 / Windows Server 2022
+
+# Computer vision & RTSP streaming
+opencv-python>=4.9.0.80
+
+# YOLOv11 inference (downloads model weights on first run)
+ultralytics>=8.3.0
+
+# ByteTrack assignment solver (required by ultralytics tracker)
+# lapx provides pre-built Windows wheels; plain 'lap' requires a C compiler
+lapx>=0.5.5
+
+# Scientific computing (transitive dep of ultralytics, pinned for stability)
+numpy>=1.26.0
+
+# Rich terminal UI / console dashboard
+rich>=13.7.0
+
+# System metrics (CPU / RAM monitoring)
+psutil>=6.0.0
+
+# ─── Optional GPU acceleration ──────────────────────────────────────────────
+# Uncomment the appropriate line for your GPU:
+
+# NVIDIA GPU (CUDA 12.x) – recommended for RTX 4060+
+# torch>=2.3.0+cu121 --index-url https://download.pytorch.org/whl/cu121
+# torchvision>=0.18.0+cu121 --index-url https://download.pytorch.org/whl/cu121
+
+# CPU-only (slower inference, no GPU required)
+# torch>=2.3.0
+# torchvision>=0.18.0
+
+# ─── Phase 2: Gender classification ─────────────────────────────────────────
+# Install ONE of the following blocks depending on your preference.
+
+# Option A – DeepFace (easier install, slower, no extra model download)
+deepface>=0.0.93
+
+# Option B – InsightFace (faster, requires ONNX model download on first run)
+# insightface>=0.7.3
+# onnxruntime>=1.17.0      # CPU
+# onnxruntime-gpu>=1.17.0  # GPU (use instead of onnxruntime)
+
+# ─── Phase 2: PostgreSQL persistence ─────────────────────────────────────────
+# Required only when DATABASE.enabled = true in config.ini
+psycopg2-binary>=2.9.9
+
+# ─── Phase 2: Testing ─────────────────────────────────────────────────────────
+pytest>=8.2.0
+pytest-mock>=3.14.0
+
+# ─── Optional GPU acceleration ───────────────────────────────────────────────
+# Uncomment the appropriate line for your GPU:
+
+# NVIDIA GPU (CUDA 12.x) – recommended for RTX 4060+
+# torch>=2.3.0+cu121 --index-url https://download.pytorch.org/whl/cu121
+# torchvision>=0.18.0+cu121 --index-url https://download.pytorch.org/whl/cu121
+
+# CPU-only (slower inference, no GPU required)
+# torch>=2.3.0
+# torchvision>=0.18.0
+
+# ─── Notes ───────────────────────────────────────────────────────────────────
+# FFmpeg must be installed separately and added to PATH.
+# Download: https://ffmpeg.org/download.html
+#
+# The YOLO model (yolo11n.pt) is downloaded automatically by ultralytics
+# to the models/ folder on first run if not already present.
+#
+# Phase 2 – DeepFace downloads face analysis models on first use (~300 MB).
+# Phase 2 – InsightFace downloads buffalo_l model on first use (~300 MB).

@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Sensitive config (contains real credentials & API keys)
+config/config.ini
+
+# YOLO / ML model weights (large binaries)
+models/*.pt
+models/*.onnx
+models/face/
+
+# Snapshots & logs (runtime output)
+snapshots/
+logs/
+*.log
+
+# Database
+*.db
+*.sqlite3
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Build artifacts
+*.egg-info/
+dist/
+build/

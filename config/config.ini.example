@@ -1,0 +1,123 @@
+[CAMERA]
+ip = 192.168.1.100
+username = admin
+password = YOUR_CAMERA_PASSWORD
+rtsp_port = 554
+rtsp_url = rtsp://admin:YOUR_CAMERA_PASSWORD@192.168.1.100:554/cam/realmonitor?channel=1&subtype=0
+onvif_port = 80
+channel = 1
+
+[YOLO]
+model = models/yolo11n.pt
+confidence = 0.40
+device = auto
+iou_threshold = 0.45
+
+[SYSTEM]
+reconnect_attempts = 10
+reconnect_delay = 5
+save_snapshots = true
+snapshot_on_detection = true
+snapshot_on_error = true
+snapshot_on_reconnect = true
+frame_failure_threshold = 30
+frame_queue_size = 10
+max_ram_mb = 30720
+log_level = INFO
+
+[DISPLAY]
+dashboard_refresh_rate = 0.5
+show_fps = true
+show_system_health = true
+
+[AI]
+enabled = true
+interval_seconds = 30
+
+; Provider 1 – Google Gemini (primary)
+gemini_api_key = YOUR_GEMINI_API_KEY
+gemini_model = gemini-2.0-flash
+
+; Provider 2 – Anthropic Claude
+anthropic_api_key = YOUR_ANTHROPIC_API_KEY
+anthropic_model = claude-haiku-4-5-20251001
+
+; Provider 3 – OpenRouter
+openrouter_api_key = YOUR_OPENROUTER_API_KEY
+openrouter_model = openai/gpt-4o
+
+; Provider 4 – DeepSeek
+deepseek_api_key = YOUR_DEEPSEEK_API_KEY
+deepseek_model = deepseek-chat
+
+[TRACKING]
+max_age = 30
+min_hits = 1
+iou_threshold = 0.45
+persist_every_n_frames = 5
+
+[GENDER]
+enabled = true
+backend = deepface
+confidence_threshold = 0.65
+min_bbox_height_px = 80
+max_workers = 2
+
+[LINE_COUNTER]
+line_1 = 0,180 640,180
+line_1_label = MainEntrance
+line_1_entry_direction = TOP_TO_BOTTOM
+
+[ZONES]
+zone_1 = 0,0 320,0 320,360 0,360
+zone_1_label = Zone A
+zone_2 = 320,0 640,0 640,360 320,360
+zone_2_label = Zone B
+
+[DATABASE]
+enabled = false
+host = localhost
+port = 5432
+dbname = cctv_analytics
+user = cctv_user
+password = YOUR_DB_PASSWORD
+pool_min = 2
+pool_max = 10
+write_queue_maxsize = 2000
+
+[OCCUPANCY]
+average_window_seconds = 300
+reset_peak_daily = true
+alert_threshold = 50
+
+[FACE_RECOGNITION]
+backend = insightface
+min_confidence = 0.85
+re_identify_interval = 30
+model_dir = models/face
+confirmed_threshold = 0.95
+possible_threshold = 0.90
+
+[ATTENDANCE]
+late_threshold = 09:15
+work_start = 09:00
+work_end = 18:00
+timezone = Asia/Kathmandu
+
+[SMART_ALERTS]
+restricted_zones = Warehouse,Store,Printing Plant
+loitering_seconds = 900
+crowd_threshold = 20
+office_start_hour = 7
+office_end_hour = 19
+enabled = true
+
+[VISITOR_MANAGEMENT]
+enabled = true
+save_snapshots = true
+
+[CANTEEN]
+zone_label = Canteen
+breakfast_hours = 7,10
+lunch_hours = 12,15
+dinner_hours = 19,22
